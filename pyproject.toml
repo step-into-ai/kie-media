@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "kie-media"
+version = "0.1.0"
+description = "Agent-friendly CLI for KIE.ai image and video generation"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = ["requests>=2.31"]
+license = {text = "MIT"}
+authors = [{name = "Olymp"}]
+
+[project.scripts]
+kie-media = "kie_media.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
