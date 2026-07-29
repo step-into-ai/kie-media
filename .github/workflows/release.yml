@@ -36,7 +36,7 @@ jobs:
           python -m pip wheel . --no-deps -w dist
           cd dist && sha256sum *.whl > SHA256SUMS
       - name: Attest wheel
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: dist/*.whl
       - name: Create GitHub release
