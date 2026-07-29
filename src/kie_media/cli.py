@@ -7,6 +7,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from . import __version__
+from .agent import (
+    PlanError, build_plan, execute_plan, load_manifest, manifest_lock, new_manifest_path,
+    plan_fingerprint, production_lock, save_manifest,
+)
 from .client import KieApiError, KieClient, TaskResult, parse_result, validate_wait_options
 from .history import HistoryStore, default_home
 from .models import ModelValidationError, get_model, list_models, prepare_input
@@ -22,6 +27,13 @@ def parse_key_values(items: list[str]) -> dict[str, Any]:
         except json.JSONDecodeError: value = raw
         result[key] = value
     return result
+
+
+def _positive_int(value: str) -> int:
+    parsed = int(value)
+    if parsed < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return parsed
 
 
 def _load_env_key(env_file: str | None = None) -> str | None:
@@ -59,8 +71,28 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--json", action="store_true")
 
 
+def _add_agent_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("brief")
+    parser.add_argument(
+        "--workflow", default="auto",
+        choices=["auto", "image", "video", "image-to-video", "product-photoshoot", "marketplace-cards", "video-explainer", "campaign"],
+    )
+    parser.add_argument("--media", action="append", default=[], help="Reference/product image path; repeat for multiple images")
+    parser.add_argument("--reference-video", action="append", default=[], help="Seedance reference video; repeat as needed")
+    parser.add_argument("--reference-audio", action="append", default=[], help="Seedance reference audio; repeat as needed")
+    parser.add_argument("--count", type=int, default=1)
+    parser.add_argument("--aspect-ratio")
+    parser.add_argument("--duration", type=int)
+    parser.add_argument("--budget", choices=["quality", "fast"], default="quality")
+    parser.add_argument("--output-dir")
+    parser.add_argument("--mode", help="Product-photoshoot mode")
+    parser.add_argument("--scope", choices=["main", "product-images", "aplus", "full-set"])
+    parser.add_argument("--json", action="store_true")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kie-media", description="Agent-friendly KIE.ai image and video generation")
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument("--env-file", help="Optional .env containing KIE_API_KEY")
     sub = parser.add_subparsers(dest="command", required=True)
     credits = sub.add_parser("credits", help="Show remaining KIE credits"); credits.add_argument("--json", action="store_true")
@@ -78,6 +110,18 @@ def build_parser() -> argparse.ArgumentParser:
         if name == "wait": cmd.add_argument("--timeout", type=float, default=900); cmd.add_argument("--interval", type=float, default=2); cmd.add_argument("--output-dir"); cmd.add_argument("--no-download", action="store_true")
         if name == "download": cmd.add_argument("--output-dir")
     hist = sub.add_parser("history", help="Show local generation history"); hist.add_argument("--limit", type=int, default=20); hist.add_argument("--json", action="store_true")
+    agent = sub.add_parser("agent", help="Plan or execute agentic media-production workflows")
+    agent_sub = agent.add_subparsers(dest="agent_command", required=True)
+    agent_plan = agent_sub.add_parser("plan", help="Route a natural brief and emit a reproducible production plan")
+    _add_agent_flags(agent_plan); agent_plan.add_argument("--save", help="Write a private plan manifest")
+    agent_run = agent_sub.add_parser("run", help="Execute ready generation stages and stop at review gates")
+    _add_agent_flags(agent_run)
+    agent_run.add_argument("--manifest", help="Private run manifest path; an existing matching file is resumed")
+    agent_run.add_argument("--selected-file", help="Reviewed campaign winner to animate when resuming an awaiting-review manifest")
+    agent_run.add_argument(
+        "--max-jobs", type=_positive_int, default=5,
+        help="Maximum paid jobs declared by the plan (default: 5); raise explicitly for larger bundles",
+    )
     return parser
 
 
@@ -266,6 +310,43 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.command == "models": _print(_model_rows(args.kind), args.json); return 0
         if args.command == "model": _print(_model_detail(args.name), args.json); return 0
+        if args.command == "agent":
+            plan = build_plan(
+                args.brief, workflow=args.workflow, media=args.media,
+                reference_videos=args.reference_video, reference_audio=args.reference_audio, count=args.count,
+                aspect_ratio=args.aspect_ratio, duration=args.duration, budget=args.budget,
+                output_dir=args.output_dir, mode=args.mode, scope=args.scope,
+            )
+            if args.agent_command == "plan":
+                if args.save:
+                    save_manifest(args.save, plan, {"state": "planned", "results": []})
+                _print(plan.to_dict(), args.json)
+                return 0
+            if plan.estimated_jobs > args.max_jobs:
+                raise PlanError(
+                    f"Plan declares {plan.estimated_jobs} jobs, above --max-jobs {args.max_jobs}; "
+                    "inspect the free plan and raise --max-jobs explicitly to authorize the larger bundle"
+                )
+            if args.env_file:
+                os.environ["KIE_MEDIA_ENV_FILE"] = str(Path(args.env_file).expanduser())
+            manifest = Path(args.manifest).expanduser().resolve(strict=False) if args.manifest else new_manifest_path(plan)
+            with production_lock(plan), manifest_lock(manifest):
+                prior_execution = None
+                if manifest.exists():
+                    stored = load_manifest(manifest)
+                    if stored.get("plan_fingerprint") != plan_fingerprint(plan):
+                        raise PlanError("Existing manifest does not match this production plan")
+                    prior_execution = stored["execution"]
+                else:
+                    save_manifest(manifest, plan, {"state": "planned", "running_stage": None, "results": []})
+                execution = execute_plan(
+                    plan,
+                    prior_execution=prior_execution,
+                    selected_file=args.selected_file,
+                    checkpoint=lambda state: save_manifest(manifest, plan, state),
+                )
+            _print({"workflow": plan.workflow, "manifest": str(manifest), **execution}, args.json)
+            return 1 if execution.get("state") in {"failed", "checkpoint_failed", "needs_recovery"} else 0
         history = HistoryStore()
         if args.command == "history": _print(history.list(args.limit), args.json); return 0
         key = _load_env_key(args.env_file)
@@ -295,7 +376,7 @@ def main(argv: list[str] | None = None) -> int:
                 _print({"task_id": args.task_id, "files": paths, "urls": result.urls}, args.json); return 0
             except KieApiError as exc: raise KieApiError(f"Task {args.task_id}: {exc}", exc.code, exc.payload) from exc
         parser.error("unknown command")
-    except (KieApiError, ModelValidationError, ValueError) as exc:
+    except (KieApiError, ModelValidationError, PlanError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     return 0

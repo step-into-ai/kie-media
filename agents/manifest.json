@@ -1,0 +1,50 @@
+{
+  "schema_version": "1.0",
+  "name": "kie-media-production",
+  "runtime": "Agent Skills-compatible host + kie-media CLI",
+  "entrypoints": {
+    "plan": "kie-media agent plan",
+    "run": "kie-media agent run"
+  },
+  "roles": [
+    {
+      "id": "creative-director",
+      "purpose": "Classify intent, choose a workflow, identify only genuine blockers, and protect the production budget.",
+      "inputs": ["natural-language brief", "media", "format", "count"],
+      "outputs": ["ProductionPlan", "routing reason", "missing inputs"]
+    },
+    {
+      "id": "prompt-engineer",
+      "purpose": "Convert the brief into short model-aware prompts and independent product/marketplace templates.",
+      "inputs": ["brief", "workflow mode", "brand/product references"],
+      "outputs": ["prompt per stage", "shared visual constraints"]
+    },
+    {
+      "id": "image-producer",
+      "purpose": "Execute validated image jobs with the correct KIE model and references.",
+      "inputs": ["generation stage"],
+      "outputs": ["task id", "downloaded image", "history record"]
+    },
+    {
+      "id": "video-producer",
+      "purpose": "Execute text-to-video or image-to-video stages with motion-focused prompts.",
+      "inputs": ["generation stage", "optional selected still"],
+      "outputs": ["task id", "downloaded video", "history record"]
+    },
+    {
+      "id": "reviewer-delivery",
+      "purpose": "Inspect outputs, reject defects, select campaign winners, and deliver persistent local files with a concise summary.",
+      "inputs": ["generated files", "original brief"],
+      "outputs": ["review decision", "selected assets", "delivery summary"]
+    }
+  ],
+  "workflows": [
+    "image",
+    "video",
+    "image-to-video",
+    "product-photoshoot",
+    "marketplace-cards",
+    "campaign",
+    "video-explainer (hybrid plan only)"
+  ]
+}

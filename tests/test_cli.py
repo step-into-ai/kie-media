@@ -1,11 +1,15 @@
 import argparse
 import contextlib
 import io
+import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 from kie_media.cli import _apply_media, _resolve_media_params, build_parser, main, parse_key_values
 from kie_media.client import KieApiError
+from kie_media.agent import build_plan, save_manifest
 from kie_media.models import ModelValidationError
 
 
@@ -13,6 +17,13 @@ class CliTests(unittest.TestCase):
     def test_parse_key_values_parses_json_scalars_and_arrays(self):
         parsed = parse_key_values(["duration=5", "generate_audio=false", 'image_urls=["https://x/a.png"]'])
         self.assertEqual(parsed, {"duration": 5, "generate_audio": False, "image_urls": ["https://x/a.png"]})
+
+    def test_version_flag(self):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
+            build_parser().parse_args(["--version"])
+        self.assertEqual(raised.exception.code, 0)
+        self.assertEqual(output.getvalue().strip(), "kie-media 0.2.0")
 
     def test_generate_command_matches_agent_friendly_shape(self):
         args = build_parser().parse_args(["generate", "image-fast", "--prompt", "hello", "--wait"])
@@ -126,6 +137,93 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stderr(stderr):
             self.assertEqual(main(["status", "task-123"]), 1)
         self.assertIn("task-123", stderr.getvalue())
+
+    def test_agent_plan_parser_exposes_workflow_controls(self):
+        args = build_parser().parse_args([
+            "agent", "plan", "Pinterest pin for my candle", "--media", "candle.jpg",
+            "--workflow", "product-photoshoot", "--count", "3", "--json",
+        ])
+        self.assertEqual(args.command, "agent")
+        self.assertEqual(args.agent_command, "plan")
+        self.assertEqual(args.count, 3)
+        self.assertEqual(args.media, ["candle.jpg"])
+        video = build_parser().parse_args([
+            "agent", "plan", "Video", "--workflow", "video",
+            "--reference-video", "motion.mp4", "--reference-audio", "beat.wav",
+        ])
+        self.assertEqual(video.reference_video, ["motion.mp4"])
+        self.assertEqual(video.reference_audio, ["beat.wav"])
+        run = build_parser().parse_args([
+            "agent", "run", "campaign", "--manifest", "run.json", "--selected-file", "winner.jpg",
+        ])
+        self.assertEqual(run.selected_file, "winner.jpg")
+        self.assertEqual(run.max_jobs, 5)
+
+    @patch("kie_media.cli.execute_plan")
+    def test_agent_run_blocks_plans_above_default_job_budget(self, execute_plan):
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            code = main([
+                "agent", "run", "Complete marketplace listing set",
+                "--workflow", "marketplace-cards", "--scope", "full-set",
+                "--media", "product.jpg", "--json",
+            ])
+        self.assertEqual(code, 1)
+        self.assertIn("13 jobs", stderr.getvalue())
+        self.assertIn("--max-jobs", stderr.getvalue())
+        execute_plan.assert_not_called()
+
+    @patch("kie_media.cli.execute_plan", return_value={"state": "completed", "results": []})
+    def test_agent_run_accepts_explicit_job_budget(self, execute_plan):
+        with tempfile.TemporaryDirectory() as td:
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = main([
+                    "agent", "run", "Complete marketplace listing set",
+                    "--workflow", "marketplace-cards", "--scope", "full-set",
+                    "--media", "product.jpg", "--output-dir", td,
+                    "--manifest", str(Path(td) / "run.json"), "--max-jobs", "13", "--json",
+                ])
+        self.assertEqual(code, 0)
+        execute_plan.assert_called_once()
+
+    @patch("kie_media.cli.KieClient")
+    def test_agent_plan_needs_no_api_key_or_client(self, client_class):
+        stdout = io.StringIO()
+        with contextlib.redirect_stdout(stdout):
+            self.assertEqual(main(["agent", "plan", "Quick image of a fox", "--budget", "fast", "--json"]), 0)
+        payload = json.loads(stdout.getvalue())
+        self.assertEqual(payload["workflow"], "image")
+        self.assertEqual(payload["stages"][0]["model"], "image-fast")
+        client_class.assert_not_called()
+
+    @patch("kie_media.cli.KieClient")
+    def test_completed_manifest_is_rejoined_without_paid_client(self, client_class):
+        plan = build_plan("One icon", workflow="image")
+        execution = {
+            "state": "completed", "running_stage": None,
+            "results": [{"stage_id": "image-1", "state": "success", "task_id": "done"}],
+        }
+        with tempfile.TemporaryDirectory() as td:
+            manifest = Path(td) / "run.json"
+            save_manifest(manifest, plan, execution)
+            stdout = io.StringIO()
+            with contextlib.redirect_stdout(stdout):
+                code = main(["agent", "run", "One icon", "--workflow", "image", "--manifest", str(manifest), "--json"])
+        self.assertEqual(code, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["state"], "completed")
+        client_class.assert_not_called()
+
+    def test_mismatched_manifest_is_rejected_before_execution(self):
+        first = build_plan("First icon", workflow="image")
+        with tempfile.TemporaryDirectory() as td:
+            manifest = Path(td) / "run.json"
+            save_manifest(manifest, first, {"state": "planned", "running_stage": None, "results": []})
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                code = main(["agent", "run", "Different icon", "--workflow", "image", "--manifest", str(manifest), "--json"])
+        self.assertEqual(code, 1)
+        self.assertIn("does not match", stderr.getvalue())
 
 
 if __name__ == "__main__":

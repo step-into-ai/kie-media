@@ -1,0 +1,20 @@
+{
+  "name": "kie-media",
+  "interface": {
+    "displayName": "KIE Media"
+  },
+  "plugins": [
+    {
+      "name": "kie-media",
+      "source": {
+        "source": "local",
+        "path": "./plugins/kie-media"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Creative"
+    }
+  ]
+}

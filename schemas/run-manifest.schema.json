@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/step-into-ai/kie-media/main/schemas/run-manifest.schema.json",
+  "title": "KIE Media Run Manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["plan_fingerprint", "plan", "execution"],
+  "properties": {
+    "plan_fingerprint": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "plan": {"$ref": "production-plan.schema.json"},
+    "execution": {
+      "type": "object",
+      "required": ["state", "results"],
+      "properties": {
+        "state": {
+          "enum": ["planned", "running", "awaiting_review", "blocked", "completed", "failed", "checkpoint_failed", "needs_recovery"]
+        },
+        "running_stage": {"type": ["string", "null"]},
+        "blocked_on": {"type": ["string", "null"]},
+        "failed_stage": {"type": ["string", "null"]},
+        "selected_file": {"type": ["string", "null"]},
+        "checkpoint_after_paid": {"type": "boolean"},
+        "error": {"type": "string"},
+        "results": {
+          "type": "array",
+          "items": {"type": "object"}
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

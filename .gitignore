@@ -7,4 +7,15 @@ dist/
 build/
 *.egg-info/
 .env
+.env.*
+!.env.example
 outputs/
+kie-media-output/
+agent-run-*.json
+*-run.json
+.kie-media-locks/
+.claude/settings.local.json
+.mypy_cache/
+.ruff_cache/
+.tox/
+.DS_Store

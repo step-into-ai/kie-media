@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/step-into-ai/kie-media/main/schemas/production-plan.schema.json",
+  "title": "KIE Media Production Plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version", "workflow", "route_reason", "brief", "status", "executable",
+    "mode", "scope", "aspect_ratio", "duration", "count", "budget",
+    "output_dir", "required_inputs", "missing_inputs", "assumptions",
+    "capability_gaps", "stages", "estimated_jobs"
+  ],
+  "properties": {
+    "version": {"type": "string"},
+    "workflow": {
+      "enum": ["image", "video", "image-to-video", "product-photoshoot", "marketplace-cards", "video-explainer", "campaign"]
+    },
+    "route_reason": {"type": "string"},
+    "brief": {"type": "string", "minLength": 1},
+    "status": {"enum": ["ready", "needs_input", "hybrid"]},
+    "executable": {"type": "boolean"},
+    "mode": {"type": ["string", "null"]},
+    "scope": {"type": ["string", "null"]},
+    "aspect_ratio": {"type": "string"},
+    "duration": {"type": ["integer", "null"]},
+    "count": {"type": "integer", "minimum": 1, "maximum": 20},
+    "budget": {"enum": ["quality", "fast"]},
+    "output_dir": {"type": "string"},
+    "required_inputs": {"type": "array", "items": {"type": "string"}},
+    "missing_inputs": {"type": "array", "items": {"type": "string"}},
+    "assumptions": {"type": "array", "items": {"type": "string"}},
+    "capability_gaps": {"type": "array", "items": {"type": "string"}},
+    "estimated_jobs": {"type": "integer", "minimum": 0},
+    "stages": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/stage"}
+    }
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "role", "action", "description", "model", "prompt", "asset", "command", "depends_on", "blocking"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "role": {"type": "string", "minLength": 1},
+        "action": {"enum": ["generate", "generate-selected", "review", "research", "script", "external", "hybrid"]},
+        "description": {"type": "string"},
+        "model": {"type": ["string", "null"]},
+        "prompt": {"type": "string"},
+        "asset": {"type": ["string", "null"]},
+        "command": {
+          "oneOf": [
+            {"type": "null"},
+            {"type": "array", "minItems": 1, "items": {"type": "string"}}
+          ]
+        },
+        "depends_on": {"type": "array", "items": {"type": "string"}},
+        "blocking": {"type": "boolean"}
+      }
+    }
+  }
+}

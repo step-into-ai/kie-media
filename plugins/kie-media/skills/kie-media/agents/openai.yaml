@@ -1,0 +1,8 @@
+interface:
+  display_name: "KIE Media"
+  short_description: "Plan and produce KIE.ai images and videos safely"
+  brand_color: "#7C3AED"
+  default_prompt: "Plan this media request with KIE Media first. Show the workflow and estimated jobs; do not generate unless creation was requested."
+
+policy:
+  allow_implicit_invocation: true
