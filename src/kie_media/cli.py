@@ -13,8 +13,10 @@ from .agent import (
     plan_fingerprint, production_lock, save_manifest,
 )
 from .client import KieApiError, KieClient, TaskResult, parse_result, validate_wait_options
+from .catalog import CatalogError, DocsCatalog
 from .history import HistoryStore, default_home
-from .models import ModelValidationError, get_model, list_models, prepare_input
+from .models import ModelSpec, ModelValidationError, get_model, list_models, prepare_model_input
+from .preferences import Preferences, PreferencesError, PreferencesStore, TIERS
 
 
 def parse_key_values(items: list[str]) -> dict[str, Any]:
@@ -83,7 +85,11 @@ def _add_agent_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--count", type=int, default=1)
     parser.add_argument("--aspect-ratio")
     parser.add_argument("--duration", type=int)
-    parser.add_argument("--budget", choices=["quality", "fast"], default="quality")
+    parser.add_argument("--tier", choices=TIERS, help="Model strategy: budget, balanced or premium")
+    parser.add_argument("--budget", choices=["quality", "fast"], help="Deprecated alias: fast=budget, quality=balanced")
+    parser.add_argument("--image-model", help="Preferred image model name, alias or KIE model ID")
+    parser.add_argument("--video-model", help="Preferred video model name, alias or KIE model ID")
+    parser.add_argument("--no-preferences", action="store_true", help="Ignore saved local model preferences")
     parser.add_argument("--output-dir")
     parser.add_argument("--mode", help="Product-photoshoot mode")
     parser.add_argument("--scope", choices=["main", "product-images", "aplus", "full-set"])
@@ -96,8 +102,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--env-file", help="Optional .env containing KIE_API_KEY")
     sub = parser.add_subparsers(dest="command", required=True)
     credits = sub.add_parser("credits", help="Show remaining KIE credits"); credits.add_argument("--json", action="store_true")
-    models = sub.add_parser("models", help="List curated KIE models and aliases"); models.add_argument("--kind", choices=["image", "video"]); models.add_argument("--json", action="store_true")
-    model = sub.add_parser("model", help="Inspect one model's local input schema"); model.add_argument("name"); model.add_argument("--json", action="store_true")
+    models = sub.add_parser("models", help="List curated models or search KIE's live documentation")
+    models.add_argument("--kind", choices=["image", "video"])
+    models.add_argument("--live", action="store_true", help="Search the current KIE documentation index")
+    models.add_argument("--search", default="", help="Filter live model documentation by name")
+    models.add_argument("--refresh", action="store_true", help="Refresh the validated documentation cache")
+    models.add_argument("--json", action="store_true")
+    model = sub.add_parser("model", help="Inspect a curated, cached or live KIE model schema")
+    model.add_argument("name"); model.add_argument("--kind", choices=["image", "video"]); model.add_argument("--refresh", action="store_true"); model.add_argument("--json", action="store_true")
+    preferences = sub.add_parser("preferences", help="Show or update private per-user model preferences")
+    preference_sub = preferences.add_subparsers(dest="preferences_command", required=True)
+    preference_show = preference_sub.add_parser("show"); preference_show.add_argument("--json", action="store_true")
+    preference_set = preference_sub.add_parser("set")
+    preference_set.add_argument("--tier", choices=TIERS)
+    preference_set.add_argument("--image-model")
+    preference_set.add_argument("--video-model")
+    preference_set.add_argument("--clear-image-model", action="store_true")
+    preference_set.add_argument("--clear-video-model", action="store_true")
+    preference_set.add_argument("--exclude-model", action="append", default=[])
+    preference_set.add_argument("--clear-exclusions", action="store_true")
+    preference_set.add_argument("--max-jobs", type=_positive_int)
+    preference_set.add_argument("--json", action="store_true")
+    preference_reset = preference_sub.add_parser("reset"); preference_reset.add_argument("--json", action="store_true")
     upload = sub.add_parser("upload", help="Upload a local media file to KIE's temporary store"); upload.add_argument("path"); upload.add_argument("--json", action="store_true")
     generate = sub.add_parser("generate", help="Generate with a model or alias")
     generate.add_argument("model"); generate.add_argument("--prompt", required=True); _add_output_flags(generate)
@@ -119,8 +145,8 @@ def build_parser() -> argparse.ArgumentParser:
     agent_run.add_argument("--manifest", help="Private run manifest path; an existing matching file is resumed")
     agent_run.add_argument("--selected-file", help="Reviewed campaign winner to animate when resuming an awaiting-review manifest")
     agent_run.add_argument(
-        "--max-jobs", type=_positive_int, default=5,
-        help="Maximum paid jobs declared by the plan (default: 5); raise explicitly for larger bundles",
+        "--max-jobs", type=_positive_int,
+        help="Maximum paid jobs; defaults to saved preferences (initially 5)",
     )
     return parser
 
@@ -129,12 +155,36 @@ def _model_rows(kind: str | None) -> list[dict[str, Any]]:
     return [{"id": m.id, "name": m.name, "kind": m.kind, "aliases": list(m.aliases), "description": m.description, "docs": m.docs} for m in list_models(kind)]
 
 
-def _model_detail(name: str) -> dict[str, Any]:
+def _resolve_model(
+    name: str,
+    *,
+    kind: str | None = None,
+    refresh: bool = False,
+    allow_passthrough: bool = False,
+    needs_reference: bool | None = None,
+) -> ModelSpec:
     model = get_model(name)
+    if model.kind != "custom":
+        if kind and model.kind != kind:
+            raise ModelValidationError(f"Requested {kind} model, got {model.kind}: {model.id}")
+        return model
+    try:
+        return DocsCatalog().resolve(name, kind=kind, refresh=refresh, needs_reference=needs_reference)
+    except CatalogError:
+        technical_id = "/" in name and not any(char.isspace() for char in name)
+        if allow_passthrough and technical_id:
+            return model
+        raise
+
+
+def _model_detail(model: ModelSpec) -> dict[str, Any]:
+    curated_ids = {item.id for item in list_models()}
+    source = "curated" if model.id in curated_ids else ("passthrough" if model.kind == "custom" else "dynamic-docs")
     return {
         "id": model.id,
         "name": model.name,
         "kind": model.kind,
+        "source": source,
         "aliases": list(model.aliases),
         "description": model.description,
         "docs": model.docs,
@@ -148,10 +198,22 @@ def _model_detail(name: str) -> dict[str, Any]:
                 "maximum": spec.maximum,
                 "min_items": spec.min_items,
                 "max_items": spec.max_items,
+                "min_length": spec.min_length,
                 "max_length": spec.max_length,
             }
             for key, spec in model.fields.items()
         },
+    }
+
+
+def _live_model_rows(query: str, kind: str | None, refresh: bool) -> list[dict[str, Any]]:
+    return [entry.to_dict() for entry in DocsCatalog().search(query, kind=kind, refresh=refresh)]
+
+
+def _cost_estimates(history: HistoryStore) -> dict[str, float]:
+    return {
+        model: float(values["median_credits"])
+        for model, values in history.cost_profile().items()
     }
 
 
@@ -188,10 +250,14 @@ def _resolve_list(client: KieClient, values: list[str], expected_kind: str) -> l
 
 
 def _resolve_media_params(client: KieClient, values: dict[str, Any]) -> None:
-    scalar_fields = {"first_frame_url": "image", "last_frame_url": "image"}
+    scalar_fields = {
+        "image_url": "image", "first_frame_url": "image", "last_frame_url": "image",
+        "video_url": "video", "audio_url": "audio",
+    }
     list_fields = {
         "image_urls": "image", "reference_image_urls": "image",
-        "reference_video_urls": "video", "reference_audio_urls": "audio",
+        "video_urls": "video", "reference_video_urls": "video",
+        "audio_urls": "audio", "reference_audio_urls": "audio",
     }
     for key, kind in scalar_fields.items():
         if key not in values: continue
@@ -207,16 +273,13 @@ def _resolve_media_params(client: KieClient, values: dict[str, Any]) -> None:
         values[key] = _resolve_list(client, items, kind)
 
 
-def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args: argparse.Namespace) -> None:
-    model = get_model(model_id)
+def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args: argparse.Namespace, spec: ModelSpec | None = None) -> None:
+    del client  # Upload/URL resolution deliberately happens only after validation.
+    model = spec or get_model(model_id)
+    fields = set(model.fields)
     requested = bool(args.image or args.start_image or args.end_image or args.reference_image or args.reference_video or args.reference_audio)
-    if model_id in {"nano-banana-2-lite", "kling/v3-turbo-image-to-video"}:
-        if args.end_image or args.reference_video or args.reference_audio:
-            raise ModelValidationError(f"{model_id} only accepts image inputs")
-    elif model_id.startswith("bytedance/seedance-2"):
-        pass
-    elif model.kind != "custom" and requested:
-        raise ModelValidationError(f"{model_id} does not accept media input flags")
+    if not requested:
+        return
     if model_id.startswith("bytedance/seedance-2"):
         has_frames = bool(args.image or args.start_image or args.end_image)
         has_references = bool(args.reference_image or args.reference_video or args.reference_audio)
@@ -228,38 +291,44 @@ def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args:
             raise ModelValidationError("Seedance frame mode accepts one --image; use --end-image for a final frame")
         if args.end_image and not (args.start_image or args.image):
             raise ModelValidationError("Seedance --end-image requires --start-image or --image")
-    # Keep these values local/raw for static schema validation. Upload and URL
-    # resolution happen only after every model and wait option is known valid.
-    images = list(args.image)
-    start = args.start_image
-    end = args.end_image
-    refs_img = list(args.reference_image)
-    refs_vid = list(args.reference_video)
-    refs_aud = list(args.reference_audio)
-    if model_id in {"nano-banana-2-lite", "kling/v3-turbo-image-to-video"}:
-        if start: images.insert(0, start)
-        images.extend(refs_img)
-        if images: values["image_urls"] = images
-    elif model_id.startswith("bytedance/seedance-2"):
-        if start or images: values["first_frame_url"] = start or images[0]
-        if end: values["last_frame_url"] = end
-        if refs_img: values["reference_image_urls"] = refs_img
-        if refs_vid: values["reference_video_urls"] = refs_vid
-        if refs_aud: values["reference_audio_urls"] = refs_aud
-    elif model.kind == "custom":
-        if images or start: values["image_urls"] = ([start] if start else []) + images
-        if end: values["last_frame_url"] = end
-        if refs_img: values["reference_image_urls"] = refs_img
-        if refs_vid: values["reference_video_urls"] = refs_vid
-        if refs_aud: values["reference_audio_urls"] = refs_aud
+
+    def put(items: list[str], candidates: tuple[str, ...], label: str) -> None:
+        if not items:
+            return
+        target = next((name for name in candidates if name in fields), None)
+        if target is None and model.kind == "custom":
+            target = candidates[0]
+        if target is None:
+            raise ModelValidationError(f"{model.id} does not accept {label} input flags")
+        field_type = model.fields[target].type if target in model.fields else list
+        if field_type is list:
+            existing = values.get(target, [])
+            if not isinstance(existing, list):
+                raise ModelValidationError(f"Cannot combine media flags for {target}")
+            values[target] = [*existing, *items]
+        else:
+            if len(items) != 1 or target in values:
+                raise ModelValidationError(f"{target} accepts exactly one media input")
+            values[target] = items[0]
+
+    images = ([args.start_image] if args.start_image else []) + list(args.image)
+    image_targets = ("first_frame_url", "image_urls", "image_url") if model.kind == "video" else ("image_urls", "image_url", "first_frame_url")
+    put(images, image_targets, "image")
+    put([args.end_image] if args.end_image else [], ("last_frame_url",), "end-image")
+    put(list(args.reference_image), ("reference_image_urls", "image_urls", "image_url", "first_frame_url"), "reference-image")
+    put(list(args.reference_video), ("reference_video_urls", "video_urls", "video_url"), "reference-video")
+    put(list(args.reference_audio), ("reference_audio_urls", "audio_urls", "audio_url"), "reference-audio")
 
 
 def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace, model_name: str, prompt: str, shortcut_values: dict[str, Any] | None = None, expected_kind: str | None = None) -> int:
-    spec = get_model(model_name)
+    spec = _resolve_model(model_name, kind=expected_kind, allow_passthrough=True)
     if expected_kind and spec.kind != expected_kind:
         raise ModelValidationError(f"The {expected_kind} shortcut requires model kind {expected_kind}, got {spec.kind}: {spec.id}")
     values = parse_key_values(args.param)
-    media_param_fields = {"first_frame_url", "last_frame_url", "image_urls", "reference_image_urls", "reference_video_urls", "reference_audio_urls"}
+    media_param_fields = {
+        "image_url", "image_urls", "first_frame_url", "last_frame_url", "reference_image_urls",
+        "video_url", "video_urls", "reference_video_urls", "audio_url", "audio_urls", "reference_audio_urls",
+    }
     has_media_flags = bool(args.image or args.start_image or args.end_image or args.reference_image or args.reference_video or args.reference_audio)
     if has_media_flags and set(values).intersection(media_param_fields):
         raise ModelValidationError("Do not mix media --param fields with dedicated media flags")
@@ -276,13 +345,13 @@ def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace
     else:
         values.update({key: value for key, value in shortcut_values.items() if key in spec.fields and value is not None})
     values["prompt"] = prompt
-    _apply_media(client, spec.id, values, args)
+    _apply_media(client, spec.id, values, args, spec)
     if args.wait:
         validate_wait_options(args.wait_timeout, args.wait_interval)
     # Static validation before any upload or paid task creation.
-    prepare_input(spec.id, values)
+    prepare_model_input(spec, values)
     _resolve_media_params(client, values)
-    input_data = prepare_input(spec.id, values)
+    input_data = prepare_model_input(spec, values)
     task_id, _ = client.create_task(spec.id, input_data, args.callback_url)
     _safe_history_append(history, {"task_id": task_id, "model": spec.id, "state": "submitted", "input": input_data})
     if not args.wait:
@@ -295,6 +364,7 @@ def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace
             output_dir = Path(args.output_dir).expanduser() if args.output_dir else default_home() / "assets"
             paths = client.download_urls(result.urls, output_dir, task_id=task_id)
         item = _result_dict(result, paths)
+        item["model"] = item.get("model") or spec.id
         _safe_history_append(history, item)
     except Exception as exc:
         _safe_history_append(history, {"task_id": task_id, "model": spec.id, "state": "error", "error": str(exc)})
@@ -305,16 +375,81 @@ def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace
     return 0
 
 
+def _update_preferences(args: argparse.Namespace, store: PreferencesStore) -> Preferences:
+    current = store.load()
+    if args.clear_image_model and args.image_model:
+        raise PreferencesError("Use either --image-model or --clear-image-model")
+    if args.clear_video_model and args.video_model:
+        raise PreferencesError("Use either --video-model or --clear-video-model")
+    image_model = current.image_model
+    video_model = current.video_model
+    if args.clear_image_model:
+        image_model = None
+    elif args.image_model:
+        image_model = _resolve_model(args.image_model, kind="image", allow_passthrough=True).id
+    if args.clear_video_model:
+        video_model = None
+    elif args.video_model:
+        video_model = _resolve_model(args.video_model, kind="video", allow_passthrough=True).id
+    excluded = [] if args.clear_exclusions else list(current.excluded_models)
+    for name in args.exclude_model:
+        model_id = _resolve_model(name, allow_passthrough=True).id
+        if model_id not in excluded:
+            excluded.append(model_id)
+    updated = Preferences(
+        default_tier=args.tier or current.default_tier,
+        image_model=image_model,
+        video_model=video_model,
+        excluded_models=tuple(excluded),
+        max_jobs=args.max_jobs or current.max_jobs,
+    ).validate()
+    store.save(updated)
+    return updated
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser(); args = parser.parse_args(argv)
     try:
-        if args.command == "models": _print(_model_rows(args.kind), args.json); return 0
-        if args.command == "model": _print(_model_detail(args.name), args.json); return 0
+        if args.command == "models":
+            rows = _live_model_rows(args.search, args.kind, args.refresh) if (args.live or args.search or args.refresh) else _model_rows(args.kind)
+            _print(rows, args.json)
+            return 0
+        if args.command == "model":
+            _print(_model_detail(_resolve_model(args.name, kind=args.kind, refresh=args.refresh)), args.json)
+            return 0
+        if args.command == "preferences":
+            store = PreferencesStore()
+            if args.preferences_command == "show":
+                payload = store.load().to_dict()
+                payload["observed_costs"] = HistoryStore().cost_profile()
+            elif args.preferences_command == "set":
+                payload = _update_preferences(args, store).to_dict()
+            else:
+                payload = store.reset().to_dict()
+            _print(payload, args.json)
+            return 0
         if args.command == "agent":
+            preferences = Preferences() if args.no_preferences else PreferencesStore().load()
+            if args.budget:
+                selected_tier = "budget" if args.budget == "fast" else "balanced"
+            else:
+                selected_tier = args.tier or preferences.default_tier
+            requested_image = args.image_model or preferences.image_model
+            requested_video = args.video_model or preferences.video_model
+            resolved_image = _resolve_model(
+                requested_image, kind="image", allow_passthrough=True, needs_reference=bool(args.media)
+            ).id if requested_image else None
+            video_needs_reference = bool(args.media) or args.workflow in {"image-to-video", "campaign"}
+            resolved_video = _resolve_model(
+                requested_video, kind="video", allow_passthrough=True, needs_reference=video_needs_reference
+            ).id if requested_video else None
+            history = HistoryStore()
             plan = build_plan(
                 args.brief, workflow=args.workflow, media=args.media,
                 reference_videos=args.reference_video, reference_audio=args.reference_audio, count=args.count,
-                aspect_ratio=args.aspect_ratio, duration=args.duration, budget=args.budget,
+                aspect_ratio=args.aspect_ratio, duration=args.duration, budget=args.budget or "quality",
+                tier=selected_tier, image_model=resolved_image, video_model=resolved_video,
+                excluded_models=list(preferences.excluded_models), cost_estimates=_cost_estimates(history),
                 output_dir=args.output_dir, mode=args.mode, scope=args.scope,
             )
             if args.agent_command == "plan":
@@ -322,9 +457,10 @@ def main(argv: list[str] | None = None) -> int:
                     save_manifest(args.save, plan, {"state": "planned", "results": []})
                 _print(plan.to_dict(), args.json)
                 return 0
-            if plan.estimated_jobs > args.max_jobs:
+            max_jobs = args.max_jobs or preferences.max_jobs
+            if plan.estimated_jobs > max_jobs:
                 raise PlanError(
-                    f"Plan declares {plan.estimated_jobs} jobs, above --max-jobs {args.max_jobs}; "
+                    f"Plan declares {plan.estimated_jobs} jobs, above --max-jobs {max_jobs}; "
                     "inspect the free plan and raise --max-jobs explicitly to authorize the larger bundle"
                 )
             if args.env_file:
@@ -357,7 +493,11 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "image": return _generate(client, history, args, args.model, args.prompt, {"aspect_ratio": args.aspect_ratio, "resolution": args.resolution}, expected_kind="image")
         if args.command == "video": return _generate(client, history, args, args.model, args.prompt, {"aspect_ratio": args.aspect_ratio, "resolution": args.resolution, "duration": args.duration}, expected_kind="video")
         if args.command == "status":
-            try: _print(_result_dict(parse_result(client.get_task(args.task_id))), args.json); return 0
+            try:
+                item = _result_dict(parse_result(client.get_task(args.task_id)))
+                _safe_history_append(history, item)
+                _print(item, args.json)
+                return 0
             except KieApiError as exc: raise KieApiError(f"Task {args.task_id}: {exc}", exc.code, exc.payload) from exc
         if args.command == "wait":
             try:

@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kie-media"
-version = "0.2.0"
-description = "Agentic KIE.ai image and video production CLI"
+version = "0.3.0"
+description = "Portable KIE.ai media agent with live models, safe image/video workflows, campaigns, and resumable execution"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["requests>=2.31"]
+dependencies = ["requests>=2.31", "PyYAML>=6.0"]
 license = {text = "MIT"}
 authors = [{name = "Benjamin and Olymp"}]
 keywords = ["kie-ai", "agent-skills", "image-generation", "video-generation", "claude-code", "codex"]
@@ -31,6 +31,7 @@ Homepage = "https://github.com/step-into-ai/kie-media"
 Repository = "https://github.com/step-into-ai/kie-media.git"
 Issues = "https://github.com/step-into-ai/kie-media/issues"
 Changelog = "https://github.com/step-into-ai/kie-media/blob/main/CHANGELOG.md"
+"KIE.ai API Access (referral)" = "https://kie.ai?ref=cf44220beef51bafae441080f5080412"
 
 [project.scripts]
 kie-media = "kie_media.cli:main"

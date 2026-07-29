@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import statistics
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -49,3 +50,34 @@ class HistoryStore:
             try: rows.append(json.loads(line))
             except json.JSONDecodeError: continue
         return list(reversed(rows[-max(0, limit):]))
+
+    def cost_profile(self) -> dict[str, dict[str, float | int]]:
+        """Aggregate observed successful task costs without counting duplicate rows."""
+        if not self.path.exists():
+            return {}
+        by_task: dict[str, tuple[str, float]] = {}
+        for line in self.path.read_text(encoding="utf-8", errors="replace").splitlines():
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if str(row.get("state") or "").casefold() not in {"success", "completed", "complete", "succeeded"}:
+                continue
+            task_id = str(row.get("task_id") or "")
+            model = str(row.get("model") or "")
+            credits = row.get("credits_consumed")
+            if not task_id or not model or isinstance(credits, bool) or not isinstance(credits, (int, float)) or credits < 0:
+                continue
+            by_task[task_id] = (model, float(credits))
+        grouped: dict[str, list[float]] = {}
+        for model, credits in by_task.values():
+            grouped.setdefault(model, []).append(credits)
+        return {
+            model: {
+                "samples": len(values),
+                "median_credits": float(statistics.median(values)),
+                "minimum_credits": min(values),
+                "maximum_credits": max(values),
+            }
+            for model, values in sorted(grouped.items())
+        }

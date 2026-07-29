@@ -4,6 +4,28 @@ All notable changes are documented here. The format follows Keep a Changelog and
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-29
+
+### Added
+
+- Runtime discovery of current KIE models by natural name through the official `llms.txt` and per-model OpenAPI documentation.
+- Private validated model cache with last-known-good offline recovery and context-aware text/reference variant selection.
+- `budget`, `balanced`, and `premium` planning tiers plus explicit `--image-model` and `--video-model` precedence.
+- Private per-user model, tier, exclusion, and job-cap preferences.
+- Local observed-credit profiles from successful KIE task status, with clearly labelled median-based plan estimates.
+
+### Changed
+
+- Curated aliases are now verified offline fallbacks rather than the catalog ceiling.
+- Premium and budget tiers select distinct supported quality/resolution settings without changing requested job counts.
+- Production plans use schema version 2 and exclude mutable observed-credit estimates from resume fingerprints.
+
+### Security
+
+- Remote model documentation is restricted by host, scheme, redirect policy, and response size; YAML aliases are disabled.
+- Only validated structured OpenAPI fields are retained. Invalid refreshes cannot replace cached schemas.
+- Discovery and all release tests remain free of paid generation.
+
 ## [0.2.0] - 2026-07-29
 
 ### Added

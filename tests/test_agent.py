@@ -159,6 +159,38 @@ class AgentPlanningTests(unittest.TestCase):
         with self.assertRaises(PlanError):
             build_plan("animate this photo", media=["still.jpg"], duration=20)
 
+    def test_tier_routing_and_explicit_models_customize_campaign_stages(self):
+        budget = build_plan("Create a low-cost campaign", workflow="campaign", count=2, tier="budget")
+        self.assertTrue(all(stage.model == "image-fast" for stage in budget.stages if stage.action == "generate"))
+        premium = build_plan("Create a premium video", workflow="video", tier="premium")
+        self.assertEqual(premium.tier, "premium")
+        self.assertEqual(premium.stages[0].model, "video-default")
+        self.assertIn('resolution="1080p"', premium.stages[0].command)
+        premium_image = build_plan("Create a premium image", workflow="image", tier="premium")
+        self.assertIn('resolution="2K"', premium_image.stages[0].command)
+        budget_video = build_plan("Create a cheap video", workflow="video", tier="budget")
+        self.assertIn('resolution="480p"', budget_video.stages[0].command)
+        custom = build_plan(
+            "Create a campaign and animate the winner",
+            workflow="campaign",
+            count=2,
+            image_model="seedream/5-pro-text-to-image",
+            video_model="bytedance/seedance-2-mini",
+        )
+        self.assertTrue(all(stage.model == "seedream/5-pro-text-to-image" for stage in custom.stages if stage.action == "generate"))
+        self.assertEqual(custom.stages[-1].model, "bytedance/seedance-2-mini")
+
+    def test_observed_credit_estimate_is_shown_only_when_all_paid_stages_are_known(self):
+        known = build_plan(
+            "Create two images", workflow="image", count=2,
+            cost_estimates={"gpt-image-2-text-to-image": 4.0},
+        )
+        self.assertEqual(known.estimated_credits, 8.0)
+        self.assertEqual(known.credit_estimate_basis, "observed_local_history")
+        unknown = build_plan("Create a video", workflow="video", cost_estimates={})
+        self.assertIsNone(unknown.estimated_credits)
+        self.assertEqual(unknown.credit_estimate_basis, "unavailable")
+
     def test_plan_commands_are_argv_not_shell_strings(self):
         plan = build_plan('Poster with "quoted text" and $HOME', workflow="image")
         self.assertIsInstance(plan.stages[0].command, list)

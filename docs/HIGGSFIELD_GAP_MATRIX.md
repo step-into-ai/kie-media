@@ -19,6 +19,9 @@ This is an independent KIE implementation. Public workflow ideas are adapted; pr
 | Multi-step campaign | **Adapted** | Candidate generation → blocking vision review → fingerprinted manifest resume with a recorded selected candidate. |
 | Media auto-upload and role validation | **Complete** | Local/remote type checks and KIE upload service. |
 | Async jobs / rejoin | **Complete** | Status/wait/download plus per-stage atomic checkpoints, completed-stage skipping and ambiguous-stage `needs_recovery`. |
+| Public model list / model inspection UX | **Adapted** | Runtime natural-name discovery from KIE's official `llms.txt` and validated per-model OpenAPI documents, with a private last-known-good cache. |
+| Preflight cost estimate | **Partial** | KIE exposes no verified general preflight endpoint in the supported docs. KIE Media reports real `credits_consumed` after completion and uses private observed medians only when coverage is complete. |
+| Budget / balanced / premium routing | **Adapted** | Explicit model choice wins; personal defaults and relative tiers select compatible curated models/settings without fabricating provider prices. |
 | Agent evals | **Adapted** | Routing, tie-break, missing-input, safety, execution and manifest tests. |
 | Soul identity training | **Not available** | Current KIE adapter has reference-image consistency, not reusable identity-model training. Never fabricate a Soul equivalent. |
 | Marketing Studio product/avatar registry | **Not available** | Product images are passed directly; no product URL importer, avatar catalog, hooks or settings registry. |

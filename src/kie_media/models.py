@@ -18,6 +18,7 @@ class FieldSpec:
     maximum: float | None = None
     min_items: int | None = None
     max_items: int | None = None
+    min_length: int | None = None
     max_length: int | None = None
 
 
@@ -164,6 +165,16 @@ def get_model(name: str) -> ModelSpec:
     model = _BY_NAME.get(name)
     if model:
         return model
+    # Dynamic KIE documentation schemas are cached locally after discovery.
+    # Import lazily so the static catalog remains dependency-light and never
+    # performs network I/O merely because a model is inspected internally.
+    try:
+        from .catalog import DocsCatalog
+        cached = DocsCatalog().cached_model(name)
+        if cached:
+            return cached
+    except (OSError, ValueError):
+        pass
     return ModelSpec(name, name, "custom", "Uncatalogued KIE model; input is passed through without local schema validation.")
 
 
@@ -213,8 +224,7 @@ def _validate_cross_fields(model: ModelSpec, result: dict[str, Any]) -> None:
             raise ModelValidationError("Seedance last_frame_url requires first_frame_url")
 
 
-def prepare_input(model_name: str, values: dict[str, Any]) -> dict[str, Any]:
-    model = get_model(model_name)
+def prepare_model_input(model: ModelSpec, values: dict[str, Any]) -> dict[str, Any]:
     if model.kind == "custom":
         if not str(values.get("prompt", "")).strip():
             raise ModelValidationError("prompt is required for uncatalogued models")
@@ -238,6 +248,8 @@ def prepare_input(model_name: str, values: dict[str, Any]) -> dict[str, Any]:
             raise ModelValidationError(f"{key} must be >= {spec.minimum:g}")
         if spec.maximum is not None and value > spec.maximum:
             raise ModelValidationError(f"{key} must be <= {spec.maximum:g}")
+        if spec.min_length is not None and isinstance(value, str) and len(value) < spec.min_length:
+            raise ModelValidationError(f"{key} must contain at least {spec.min_length} characters")
         if spec.max_length is not None and isinstance(value, str) and len(value) > spec.max_length:
             raise ModelValidationError(f"{key} must contain at most {spec.max_length} characters")
         if spec.min_items is not None and isinstance(value, list) and len(value) < spec.min_items:
@@ -247,3 +259,7 @@ def prepare_input(model_name: str, values: dict[str, Any]) -> dict[str, Any]:
         result[key] = value
     _validate_cross_fields(model, result)
     return result
+
+
+def prepare_input(model_name: str, values: dict[str, Any]) -> dict[str, Any]:
+    return prepare_model_input(get_model(model_name), values)

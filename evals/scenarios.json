@@ -2,61 +2,247 @@
   {
     "name": "fast image",
     "brief": "Create one quick image of a fox in snow",
-    "options": {"workflow": "image", "budget": "fast"},
-    "expected": {"workflow": "image", "status": "ready", "estimated_jobs": 1, "models": ["image-fast"]}
+    "options": {
+      "workflow": "image",
+      "budget": "fast"
+    },
+    "expected": {
+      "workflow": "image",
+      "status": "ready",
+      "estimated_jobs": 1,
+      "models": [
+        "image-fast"
+      ]
+    }
   },
   {
     "name": "two videos",
     "brief": "Create two cinematic clips of a solar farm",
-    "options": {"workflow": "video", "count": 2, "duration": 5},
-    "expected": {"workflow": "video", "status": "ready", "estimated_jobs": 2, "models": ["video-default", "video-default"]}
+    "options": {
+      "workflow": "video",
+      "count": 2,
+      "duration": 5
+    },
+    "expected": {
+      "workflow": "video",
+      "status": "ready",
+      "estimated_jobs": 2,
+      "models": [
+        "video-default",
+        "video-default"
+      ]
+    }
   },
   {
     "name": "image to video missing input",
     "brief": "Animate this photo with a slow push in",
     "options": {},
-    "expected": {"workflow": "image-to-video", "status": "needs_input", "estimated_jobs": 0, "missing_inputs_contains": ["reference_image"]}
+    "expected": {
+      "workflow": "image-to-video",
+      "status": "needs_input",
+      "estimated_jobs": 0,
+      "missing_inputs_contains": [
+        "reference_image"
+      ]
+    }
   },
   {
     "name": "product photoshoot",
     "brief": "Create two studio catalog shots for this candle",
-    "options": {"workflow": "product-photoshoot", "media": ["candle.jpg"], "count": 2, "mode": "product_shot"},
-    "expected": {"workflow": "product-photoshoot", "status": "ready", "mode": "product_shot", "estimated_jobs": 2, "models": ["image-fast", "image-fast"]}
+    "options": {
+      "workflow": "product-photoshoot",
+      "media": [
+        "candle.jpg"
+      ],
+      "count": 2,
+      "mode": "product_shot"
+    },
+    "expected": {
+      "workflow": "product-photoshoot",
+      "status": "ready",
+      "mode": "product_shot",
+      "estimated_jobs": 2,
+      "models": [
+        "image-fast",
+        "image-fast"
+      ]
+    }
   },
   {
     "name": "marketplace full set",
     "brief": "Create a complete marketplace listing set and A+ cards",
-    "options": {"workflow": "marketplace-cards", "media": ["product.jpg"], "scope": "full-set"},
-    "expected": {"workflow": "marketplace-cards", "status": "ready", "scope": "full-set", "estimated_jobs": 13}
+    "options": {
+      "workflow": "marketplace-cards",
+      "media": [
+        "product.jpg"
+      ],
+      "scope": "full-set"
+    },
+    "expected": {
+      "workflow": "marketplace-cards",
+      "status": "ready",
+      "scope": "full-set",
+      "estimated_jobs": 13
+    }
   },
   {
     "name": "campaign with animation",
     "brief": "Create three campaign images and animate the best one",
-    "options": {"count": 3},
-    "expected": {"workflow": "campaign", "status": "ready", "estimated_jobs": 4, "stage_actions": ["generate", "generate", "generate", "review", "generate-selected"]}
+    "options": {
+      "count": 3
+    },
+    "expected": {
+      "workflow": "campaign",
+      "status": "ready",
+      "estimated_jobs": 4,
+      "stage_actions": [
+        "generate",
+        "generate",
+        "generate",
+        "review",
+        "generate-selected"
+      ]
+    }
   },
   {
     "name": "campaign without animation",
     "brief": "Create two campaign images without animation",
-    "options": {"count": 2},
-    "expected": {"workflow": "campaign", "status": "ready", "estimated_jobs": 2, "stage_actions": ["generate", "generate", "review"]}
+    "options": {
+      "count": 2
+    },
+    "expected": {
+      "workflow": "campaign",
+      "status": "ready",
+      "estimated_jobs": 2,
+      "stage_actions": [
+        "generate",
+        "generate",
+        "review"
+      ]
+    }
   },
   {
     "name": "honest explainer gap",
     "brief": "Turn this report into a narrated explainer",
     "options": {},
-    "expected": {"workflow": "video-explainer", "status": "hybrid", "estimated_jobs": 0, "capability_gaps_contains": ["audio_generation", "timeline_assembly"]}
+    "expected": {
+      "workflow": "video-explainer",
+      "status": "hybrid",
+      "estimated_jobs": 0,
+      "capability_gaps_contains": [
+        "audio_generation",
+        "timeline_assembly"
+      ]
+    }
   },
   {
     "name": "typed reference video",
     "brief": "Create a cinematic product video",
-    "options": {"workflow": "video", "media": ["product.png"], "reference_videos": ["motion.mp4"], "reference_audio": ["beat.wav"]},
-    "expected": {"workflow": "video", "status": "ready", "estimated_jobs": 1, "models": ["video-default"]}
+    "options": {
+      "workflow": "video",
+      "media": [
+        "product.png"
+      ],
+      "reference_videos": [
+        "motion.mp4"
+      ],
+      "reference_audio": [
+        "beat.wav"
+      ]
+    },
+    "expected": {
+      "workflow": "video",
+      "status": "ready",
+      "estimated_jobs": 1,
+      "models": [
+        "video-default"
+      ]
+    }
   },
   {
     "name": "German Pinterest product route",
     "brief": "Erstelle drei Pinterest Pins für diese Kerze",
-    "options": {"media": ["kerze.jpg"], "count": 3},
-    "expected": {"workflow": "product-photoshoot", "status": "ready", "mode": "moodboard_pin", "estimated_jobs": 3}
+    "options": {
+      "media": [
+        "kerze.jpg"
+      ],
+      "count": 3
+    },
+    "expected": {
+      "workflow": "product-photoshoot",
+      "status": "ready",
+      "mode": "moodboard_pin",
+      "estimated_jobs": 3
+    }
+  },
+  {
+    "name": "budget tier image",
+    "brief": "Create two economical launch images",
+    "options": {
+      "workflow": "image",
+      "count": 2,
+      "tier": "budget"
+    },
+    "expected": {
+      "workflow": "image",
+      "status": "ready",
+      "tier": "budget",
+      "estimated_jobs": 2,
+      "models": [
+        "image-fast",
+        "image-fast"
+      ]
+    }
+  },
+  {
+    "name": "premium tier video",
+    "brief": "Create a premium cinematic video",
+    "options": {
+      "workflow": "video",
+      "tier": "premium"
+    },
+    "expected": {
+      "workflow": "video",
+      "status": "ready",
+      "tier": "premium",
+      "estimated_jobs": 1,
+      "models": [
+        "video-default"
+      ]
+    }
+  },
+  {
+    "name": "explicit requested image model",
+    "brief": "Create a hero visual with my requested model",
+    "options": {
+      "workflow": "image",
+      "image_model": "gpt-image-2-text-to-image"
+    },
+    "expected": {
+      "workflow": "image",
+      "status": "ready",
+      "tier": "balanced",
+      "estimated_jobs": 1,
+      "models": [
+        "gpt-image-2-text-to-image"
+      ]
+    }
+  },
+  {
+    "name": "observed credits estimate",
+    "brief": "Create two images with observed local pricing",
+    "options": {
+      "workflow": "image",
+      "count": 2,
+      "cost_estimates": {
+        "gpt-image-2-text-to-image": 4
+      }
+    },
+    "expected": {
+      "workflow": "image",
+      "status": "ready",
+      "estimated_jobs": 2,
+      "estimated_credits": 8.0
+    }
   }
 ]

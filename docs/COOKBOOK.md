@@ -3,11 +3,32 @@
 ## 1. Natural image request
 
 ```bash
-kie-media agent plan "Quick photorealistic fox in a snowy forest" --budget fast --json
-kie-media agent run "Quick photorealistic fox in a snowy forest" --budget fast --json
+kie-media agent plan "Quick photorealistic fox in a snowy forest" --tier budget --json
+kie-media agent run "Quick photorealistic fox in a snowy forest" --tier budget --json
 ```
 
 Routes to `image-fast` and delivers one downloaded image.
+
+## Live wish-model discovery
+
+```bash
+kie-media models --live --search "Seedream 5 Pro" --kind image --json
+kie-media model "Seedream 5 Pro" --json
+kie-media agent plan "Premium launch visual" --workflow image --tier premium \
+  --image-model "Seedream 5 Pro" --json
+```
+
+The explicit model wins over tier routing. Resolution is context-aware: no media selects the documented text-to-image variant; supplying `--media` selects a compatible reference/image-to-image variant. Discovery and planning do not spend KIE credits.
+
+## Personal defaults
+
+```bash
+kie-media preferences set --tier balanced \
+  --image-model "Seedream 5 Pro" --video-model "Seedance 2 Mini" --max-jobs 5
+kie-media preferences show --json
+```
+
+Use `--no-preferences` for a one-off plan. Observed `credits_consumed` from successful `status` and `wait` responses appear as median-based estimates only when all planned paid stages are covered.
 
 ## 2. Animate an existing still
 
@@ -49,14 +70,15 @@ kie-media agent run "Complete marketplace and A+ set for this serum" \
 
 ```bash
 kie-media agent run "Create three campaign images and animate the best one" \
-  --count 3 --aspect-ratio 4:5 --manifest ./campaign-run.json --max-jobs 4 --json
+  --count 3 --tier premium --aspect-ratio 4:5 \
+  --manifest ./campaign-run.json --max-jobs 4 --json
 ```
 
 The plan declares four paid jobs: three stills plus one selected animation. The first run generates the stills and returns `awaiting_review`. The host agent visually scores them, then resumes the same fingerprinted manifest with the winner:
 
 ```bash
 kie-media agent run "Create three campaign images and animate the best one" \
-  --count 3 --aspect-ratio 4:5 --manifest ./campaign-run.json \
+  --count 3 --tier premium --aspect-ratio 4:5 --manifest ./campaign-run.json \
   --selected-file ./selected-generated-candidate.jpg --max-jobs 4 --json
 ```
 

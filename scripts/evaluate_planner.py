@@ -20,7 +20,7 @@ from kie_media.agent import PlanError, build_plan  # noqa: E402
 
 def _compare(name: str, actual: dict[str, Any], expected: dict[str, Any]) -> list[str]:
     failures: list[str] = []
-    for key in ("workflow", "status", "mode", "scope", "estimated_jobs", "executable"):
+    for key in ("workflow", "status", "mode", "scope", "tier", "estimated_jobs", "estimated_credits", "executable"):
         if key in expected and actual.get(key) != expected[key]:
             failures.append(f"{name}: {key}: expected {expected[key]!r}, got {actual.get(key)!r}")
     if "models" in expected:

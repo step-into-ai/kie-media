@@ -16,6 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 
+from .models import get_model
+
 
 class PlanError(ValueError):
     pass
@@ -49,6 +51,9 @@ class ProductionPlan:
     duration: int | None
     count: int
     budget: str
+    tier: str
+    estimated_credits: float | None
+    credit_estimate_basis: str
     output_dir: str
     required_inputs: list[str]
     missing_inputs: list[str]
@@ -292,6 +297,122 @@ def _generate_stage(
     )
 
 
+def _normalize_tier(tier: str | None, budget: str) -> str:
+    if tier is not None:
+        if tier not in {"budget", "balanced", "premium"}:
+            raise PlanError("tier must be budget, balanced or premium")
+        return tier
+    return "budget" if budget == "fast" else "balanced"
+
+
+def _model_id(name: str) -> str:
+    return get_model(name).id
+
+
+def _supports_reference(model: str, kind: str) -> bool:
+    spec = get_model(model)
+    if spec.kind == "custom":
+        return True
+    if kind == "image":
+        fields = {"image_url", "image_urls", "first_frame_url", "reference_image_urls"}
+    elif kind == "video":
+        fields = {"video_url", "video_urls", "reference_video_urls"}
+    else:
+        fields = {"audio_url", "audio_urls", "reference_audio_urls"}
+    return bool(fields.intersection(spec.fields))
+
+
+def _choose_model(
+    kind: str,
+    tier: str,
+    *,
+    explicit: str | None,
+    needs_reference: bool,
+    cost_estimates: dict[str, float],
+    excluded_models: set[str],
+) -> str:
+    if explicit:
+        if explicit in excluded_models or _model_id(explicit) in excluded_models:
+            raise PlanError(f"Explicitly requested model is excluded by preferences: {explicit}")
+        if get_model(explicit).kind not in {kind, "custom"}:
+            raise PlanError(f"Requested {kind} model has incompatible kind: {explicit}")
+        if needs_reference and not _supports_reference(explicit, "image"):
+            raise PlanError(f"Requested model does not support image references: {explicit}")
+        return explicit
+    if kind == "image":
+        candidates = ["image-fast"] if needs_reference else ["image-fast", "image-default"]
+        fallback = "image-fast" if tier == "budget" or needs_reference else "image-default"
+    else:
+        candidates = ["video-kling-image"] if needs_reference else ["video-fast", "video-default"]
+        fallback = candidates[0] if needs_reference else ("video-fast" if tier == "budget" else "video-default")
+    candidates = [
+        model for model in candidates
+        if model not in excluded_models and _model_id(model) not in excluded_models
+    ]
+    if not candidates:
+        raise PlanError(f"All compatible {kind} models are excluded by preferences")
+    if tier == "budget":
+        observed = [
+            (cost_estimates[_model_id(model)], model)
+            for model in candidates if _model_id(model) in cost_estimates
+        ]
+        if observed:
+            return min(observed, key=lambda item: (item[0], item[1]))[1]
+    return fallback if fallback in candidates else candidates[0]
+
+
+def _model_params(model: str, values: dict[str, Any], explicit: set[str] | None = None) -> dict[str, Any]:
+    spec = get_model(model)
+    if spec.kind == "custom":
+        return values
+    explicit = explicit or set()
+    unsupported = explicit - set(spec.fields)
+    if unsupported:
+        raise PlanError(f"Model {spec.id} does not support requested option(s): {', '.join(sorted(unsupported))}")
+    return {key: value for key, value in values.items() if key in spec.fields}
+
+
+def _tier_params(model: str, tier: str, *, aspect_ratio: str | None = None) -> dict[str, Any]:
+    spec = get_model(model)
+    values: dict[str, Any] = {}
+    resolution = spec.fields.get("resolution")
+    if resolution and resolution.enum:
+        options = {str(item).casefold(): item for item in resolution.enum}
+        if spec.kind == "video":
+            preference = ("480p", "720p") if tier == "budget" else (("1080p", "720p") if tier == "premium" else ("720p",))
+        elif tier == "premium":
+            # GPT Image 2 rejects 2K for some campaign ratios and 4K at 1:1.
+            blocked = spec.id == "gpt-image-2-text-to-image" and aspect_ratio in {"5:4", "4:5", "3:1", "1:3", "9:21"}
+            preference = ("1k",) if blocked else ("2k", "1k")
+        else:
+            preference = ("1k",)
+        selected = next((options[item] for item in preference if item in options), None)
+        if selected is not None:
+            values["resolution"] = selected
+    quality = spec.fields.get("quality")
+    if quality and quality.enum and tier == "premium":
+        options = {str(item).casefold(): item for item in quality.enum}
+        selected = next((options[item] for item in ("premium", "high", "pro", "ultra", "max") if item in options), None)
+        if selected is not None:
+            values["quality"] = selected
+    if tier == "premium" and "enable_pro" in spec.fields:
+        values["enable_pro"] = True
+    return values
+
+
+def _credit_estimate(stages: list[AgentStage], costs: dict[str, float]) -> tuple[float | None, str]:
+    paid = [stage for stage in stages if stage.action in {"generate", "generate-selected"} and stage.command is not None]
+    if not paid:
+        return None, "not_applicable"
+    values: list[float] = []
+    for stage in paid:
+        model_id = _model_id(stage.model or "")
+        if model_id not in costs:
+            return None, "unavailable"
+        values.append(float(costs[model_id]))
+    return round(sum(values), 4), "observed_local_history"
+
+
 def build_plan(
     brief: str,
     *,
@@ -303,6 +424,11 @@ def build_plan(
     aspect_ratio: str | None = None,
     duration: int | None = None,
     budget: str = "quality",
+    tier: str | None = None,
+    image_model: str | None = None,
+    video_model: str | None = None,
+    excluded_models: list[str] | None = None,
+    cost_estimates: dict[str, float] | None = None,
     output_dir: str | None = None,
     mode: str | None = None,
     scope: str | None = None,
@@ -314,6 +440,12 @@ def build_plan(
         raise PlanError(f"Unknown workflow: {workflow}")
     if budget not in {"quality", "fast"}:
         raise PlanError("budget must be quality or fast")
+    selected_tier = _normalize_tier(tier, budget)
+    costs = {
+        str(model): float(value) for model, value in (cost_estimates or {}).items()
+        if not isinstance(value, bool) and isinstance(value, (int, float)) and value >= 0
+    }
+    excluded = {str(model) for model in (excluded_models or [])}
     if not 1 <= count <= 20:
         raise PlanError("count must be from 1 to 20")
     media = list(media or [])
@@ -344,27 +476,45 @@ def build_plan(
         chosen_aspect = aspect_ratio or "1:1"
         has_reference = bool(media)
         text_sensitive = _has(brief.casefold(), ("text", "typography", "schrift", "poster", "logo", "headline"))
-        model_name = "image-fast" if budget == "fast" or has_reference else "image-default"
-        if text_sensitive and not has_reference:
+        model_name = _choose_model(
+            "image", selected_tier, explicit=image_model, needs_reference=has_reference,
+            cost_estimates=costs, excluded_models=excluded,
+        )
+        if text_sensitive and not has_reference and image_model is None and selected_tier != "budget":
             model_name = "image-default"
         for index in range(1, count + 1):
             prompt = _limit_prompt(f"{brief}. Variant {index}: deliberate composition, coherent lighting, clean details, no watermark.")
             params = {"aspect_ratio": chosen_aspect}
-            if model_name == "image-default": params["resolution"] = "1K"
+            params.update(_tier_params(model_name, selected_tier, aspect_ratio=chosen_aspect))
+            params = _model_params(model_name, params, {"aspect_ratio"} if aspect_ratio else set())
             stages.append(_generate_stage(f"image-{index}", "image-producer", "Generate image variant", model_name, prompt, root, media=media, params=params))
         if not aspect_ratio: assumptions.append("square 1:1 output")
 
     elif selected == "video":
         chosen_aspect = aspect_ratio or "16:9"
         chosen_duration = duration or 5
-        model_name = "video-fast" if budget == "fast" else "video-default"
+        model_name = _choose_model(
+            "video", selected_tier, explicit=video_model,
+            needs_reference=False,
+            cost_estimates=costs, excluded_models=excluded,
+        )
+        if media and not _supports_reference(model_name, "image"):
+            raise PlanError(f"Requested video model does not support image references: {model_name}")
+        if reference_videos and not _supports_reference(model_name, "video"):
+            raise PlanError(f"Requested video model does not support video references: {model_name}")
+        if reference_audio and not _supports_reference(model_name, "audio"):
+            raise PlanError(f"Requested video model does not support audio references: {model_name}")
         for index in range(1, count + 1):
             prompt = _motion_prompt(f"{brief}. Motion variant {index} with a distinct but coherent camera treatment.")
             stages.append(_generate_stage(
                 f"video-{index}", "video-producer", f"Generate requested video variant {index}", model_name, prompt, root,
                 media=media, media_flag="--reference-image",
                 reference_videos=reference_videos, reference_audio=reference_audio,
-                params={"aspect_ratio": chosen_aspect, "duration": chosen_duration, "resolution": "720p"},
+                params=_model_params(
+                    model_name,
+                    {"aspect_ratio": chosen_aspect, "duration": chosen_duration, "resolution": "720p", **_tier_params(model_name, selected_tier)},
+                    ({"aspect_ratio"} if aspect_ratio else set()) | ({"duration"} if duration else set()),
+                ),
             ))
         if not duration: assumptions.append("five-second clip")
 
@@ -376,9 +526,16 @@ def build_plan(
             missing.append("reference_image")
         else:
             prompt = _motion_prompt(brief)
+            model_name = _choose_model(
+                "video", selected_tier, explicit=video_model, needs_reference=True,
+                cost_estimates=costs, excluded_models=excluded,
+            )
             stages.append(_generate_stage(
-                "animate-1", "video-producer", "Animate the supplied still", "video-kling-image", prompt, root,
-                media=[media[0]], params={"duration": chosen_duration, "resolution": "720p"},
+                "animate-1", "video-producer", "Animate the supplied still", model_name, prompt, root,
+                media=[media[0]], params=_model_params(
+                    model_name, {"duration": chosen_duration, "resolution": "720p", **_tier_params(model_name, selected_tier)},
+                    {"duration"} if duration else set(),
+                ),
             ))
         if not duration: assumptions.append("five-second animation")
 
@@ -389,11 +546,17 @@ def build_plan(
         if not media:
             missing.append("product_image")
         else:
+            model_name = _choose_model(
+                "image", selected_tier, explicit=image_model, needs_reference=True,
+                cost_estimates=costs, excluded_models=excluded,
+            )
             for index in range(1, count + 1):
                 prompt = _product_prompt(brief, chosen_mode, index)
                 stages.append(_generate_stage(
-                    f"product-{index}", "image-producer", f"Create {chosen_mode} variant {index}", "image-fast", prompt, root,
-                    media=media, params={"aspect_ratio": chosen_aspect}, asset=chosen_mode,
+                    f"product-{index}", "image-producer", f"Create {chosen_mode} variant {index}", model_name, prompt, root,
+                    media=media,
+                    params=_model_params(model_name, {"aspect_ratio": chosen_aspect, **_tier_params(model_name, selected_tier, aspect_ratio=chosen_aspect)}, {"aspect_ratio"} if aspect_ratio else set()),
+                    asset=chosen_mode,
                 ))
         if count == 1: assumptions.append("one product visual")
 
@@ -404,6 +567,10 @@ def build_plan(
         if not media:
             missing.append("product_image")
         else:
+            model_name = _choose_model(
+                "image", selected_tier, explicit=image_model, needs_reference=True,
+                cost_estimates=costs, excluded_models=excluded,
+            )
             assets = ["main_image"]
             if chosen_scope in {"product-images", "full-set"}: assets += MARKETPLACE_SECONDARY
             if chosen_scope in {"aplus", "full-set"}: assets += MARKETPLACE_APLUS
@@ -412,13 +579,18 @@ def build_plan(
                 if asset.startswith("aplus_"): asset_aspect = "16:9"
                 prompt = _marketplace_prompt(brief, asset)
                 stages.append(_generate_stage(
-                    f"marketplace-{index:02d}", "image-producer", f"Create marketplace asset: {asset}", "image-fast", prompt, root,
-                    media=media, params={"aspect_ratio": asset_aspect}, asset=asset,
+                    f"marketplace-{index:02d}", "image-producer", f"Create marketplace asset: {asset}", model_name, prompt, root,
+                    media=media,
+                    params=_model_params(model_name, {"aspect_ratio": asset_aspect, **_tier_params(model_name, selected_tier, aspect_ratio=asset_aspect)}, {"aspect_ratio"} if aspect_ratio else set()),
+                    asset=asset,
                 ))
 
     elif selected == "campaign":
         chosen_aspect = aspect_ratio or "4:5"
-        image_model = "image-fast" if media or budget == "fast" else "image-default"
+        campaign_image_model = _choose_model(
+            "image", selected_tier, explicit=image_model, needs_reference=bool(media),
+            cost_estimates=costs, excluded_models=excluded,
+        )
         image_ids: list[str] = []
         for index in range(1, count + 1):
             stage_id = f"campaign-image-{index}"
@@ -428,8 +600,9 @@ def build_plan(
                 "Production-ready campaign still, precise subject identity, clean details, no watermark."
             )
             params = {"aspect_ratio": chosen_aspect}
-            if image_model == "image-default": params["resolution"] = "1K"
-            stages.append(_generate_stage(stage_id, "image-producer", "Generate campaign candidate", image_model, prompt, root, media=media, params=params))
+            params.update(_tier_params(campaign_image_model, selected_tier, aspect_ratio=chosen_aspect))
+            params = _model_params(campaign_image_model, params, {"aspect_ratio"} if aspect_ratio else set())
+            stages.append(_generate_stage(stage_id, "image-producer", "Generate campaign candidate", campaign_image_model, prompt, root, media=media, params=params))
         stages.append(AgentStage(
             id="campaign-review", role="reviewer", action="review",
             description="Inspect all candidates, score prompt fidelity, identity, composition and defects, then select the strongest asset before animation.",
@@ -438,13 +611,20 @@ def build_plan(
         wants_animation = _campaign_wants_animation(brief)
         if wants_animation:
             chosen_duration = duration or 5
+            campaign_video_model = _choose_model(
+                "video", selected_tier, explicit=video_model, needs_reference=True,
+                cost_estimates=costs, excluded_models=excluded,
+            )
             animation_prompt = _motion_prompt(
                 "Animate the selected campaign winner with a subtle premium reveal and coherent camera movement"
             )
             stages.append(_generate_stage(
                 "campaign-animation", "video-producer", "Animate only the visually selected campaign winner",
-                "video-kling-image", animation_prompt, root, media=["{{selected_file}}"],
-                params={"duration": chosen_duration, "resolution": "720p"},
+                campaign_video_model, animation_prompt, root, media=["{{selected_file}}"],
+                params=_model_params(
+                    campaign_video_model, {"duration": chosen_duration, "resolution": "720p", **_tier_params(campaign_video_model, selected_tier)},
+                    {"duration"} if duration else set(),
+                ),
                 asset="selected_animation", depends_on=["campaign-review"], action="generate-selected",
             ))
             assumptions.append("animation waits for a visual review selection to avoid wasting credits")
@@ -466,10 +646,12 @@ def build_plan(
 
     status = "hybrid" if gaps else ("needs_input" if missing else "ready")
     executable = status == "ready" and any(stage.command for stage in stages)
+    estimated_credits, credit_basis = _credit_estimate(stages, costs)
     return ProductionPlan(
-        version="1.0", workflow=selected, route_reason=reason, brief=brief,
+        version="2.0", workflow=selected, route_reason=reason, brief=brief,
         status=status, executable=executable, mode=chosen_mode, scope=chosen_scope,
         aspect_ratio=chosen_aspect, duration=chosen_duration, count=count, budget=budget,
+        tier=selected_tier, estimated_credits=estimated_credits, credit_estimate_basis=credit_basis,
         output_dir=root, required_inputs=required, missing_inputs=missing,
         assumptions=assumptions, capability_gaps=gaps, stages=stages,
     )
@@ -620,8 +802,13 @@ def execute_plan(
 
 
 def plan_fingerprint(plan: ProductionPlan) -> str:
+    fingerprint_data = plan.to_dict()
+    # Local observed-cost telemetry is informative and may change after later
+    # jobs. It must never invalidate resume or alter the paid production lock.
+    fingerprint_data.pop("estimated_credits", None)
+    fingerprint_data.pop("credit_estimate_basis", None)
     encoded = json.dumps(
-        plan.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+        fingerprint_data, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
     ).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

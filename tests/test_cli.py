@@ -2,6 +2,7 @@ import argparse
 import contextlib
 import io
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from unittest.mock import Mock, patch
 from kie_media.cli import _apply_media, _resolve_media_params, build_parser, main, parse_key_values
 from kie_media.client import KieApiError
 from kie_media.agent import build_plan, save_manifest
-from kie_media.models import ModelValidationError
+from kie_media.models import FieldSpec, ModelSpec, ModelValidationError
 
 
 class CliTests(unittest.TestCase):
@@ -23,7 +24,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             build_parser().parse_args(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), "kie-media 0.2.0")
+        self.assertEqual(output.getvalue().strip(), "kie-media 0.3.0")
 
     def test_generate_command_matches_agent_friendly_shape(self):
         args = build_parser().parse_args(["generate", "image-fast", "--prompt", "hello", "--wait"])
@@ -157,7 +158,25 @@ class CliTests(unittest.TestCase):
             "agent", "run", "campaign", "--manifest", "run.json", "--selected-file", "winner.jpg",
         ])
         self.assertEqual(run.selected_file, "winner.jpg")
-        self.assertEqual(run.max_jobs, 5)
+        self.assertIsNone(run.max_jobs)
+        tailored = build_parser().parse_args([
+            "agent", "plan", "premium launch", "--tier", "premium",
+            "--image-model", "Seedream 5 Pro", "--video-model", "Seedance 2 Mini",
+        ])
+        self.assertEqual(tailored.tier, "premium")
+        self.assertEqual(tailored.image_model, "Seedream 5 Pro")
+        self.assertEqual(tailored.video_model, "Seedance 2 Mini")
+
+    def test_live_models_and_preferences_commands_exist(self):
+        live = build_parser().parse_args(["models", "--live", "--search", "Seedream", "--refresh", "--json"])
+        self.assertTrue(live.live)
+        self.assertEqual(live.search, "Seedream")
+        preferences = build_parser().parse_args([
+            "preferences", "set", "--tier", "budget", "--image-model", "Seedream 5 Pro", "--max-jobs", "3",
+        ])
+        self.assertEqual(preferences.preferences_command, "set")
+        self.assertEqual(preferences.tier, "budget")
+        self.assertEqual(preferences.max_jobs, 3)
 
     @patch("kie_media.cli.execute_plan")
     def test_agent_run_blocks_plans_above_default_job_budget(self, execute_plan):
@@ -196,6 +215,37 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["workflow"], "image")
         self.assertEqual(payload["stages"][0]["model"], "image-fast")
         client_class.assert_not_called()
+
+    def test_preferences_feed_agent_plan_without_paid_client(self):
+        with tempfile.TemporaryDirectory() as td, patch.dict(os.environ, {"KIE_MEDIA_HOME": td}):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(main([
+                    "preferences", "set", "--tier", "premium",
+                    "--image-model", "image-default", "--max-jobs", "3", "--json",
+                ]), 0)
+            saved = json.loads(out.getvalue())
+            self.assertEqual(saved["image_model"], "gpt-image-2-text-to-image")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(main(["agent", "plan", "Premium image from preferences", "--workflow", "image", "--json"]), 0)
+            plan = json.loads(out.getvalue())
+            self.assertEqual(plan["tier"], "premium")
+            self.assertEqual(plan["stages"][0]["model"], "gpt-image-2-text-to-image")
+            self.assertIn('resolution="2K"', plan["stages"][0]["command"])
+
+    @patch("kie_media.cli.DocsCatalog")
+    def test_model_command_resolves_a_natural_live_name(self, catalog_type):
+        catalog_type.return_value.resolve.return_value = ModelSpec(
+            "vendor/new-image", "Newest Image", "image", "documented", aliases=("Newest Image",),
+            fields={"prompt": FieldSpec(str, required=True)}, docs="https://docs.kie.ai/market/vendor/new-image",
+        )
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(main(["model", "Newest Image", "--json"]), 0)
+        detail = json.loads(out.getvalue())
+        self.assertEqual(detail["id"], "vendor/new-image")
+        self.assertEqual(detail["source"], "dynamic-docs")
 
     @patch("kie_media.cli.KieClient")
     def test_completed_manifest_is_rejoined_without_paid_client(self, client_class):

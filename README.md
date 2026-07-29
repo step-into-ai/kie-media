@@ -9,9 +9,15 @@ Agent-friendly image and video production through the public KIE.ai API. KIE Med
 
 The project adapts useful workflow ideas from Higgsfield's public MIT-licensed skills to documented KIE APIs. It does **not** claim Higgsfield backend parity.
 
+[![Get KIE.ai API access](https://img.shields.io/badge/Get_KIE.ai_API_Access-111827?style=for-the-badge)](https://kie.ai?ref=cf44220beef51bafae441080f5080412)
+
+> **Referral disclosure:** The KIE.ai account link above is an affiliate/referral link. Using it may support the project at no additional cost to you. KIE Media remains an independent open-source project and is not an official KIE.ai product.
+
 ## Highlights
 
-- curated image/video models behind stable aliases
+- live KIE model discovery by natural name or exact model ID, with curated offline fallbacks
+- validated OpenAPI parameter schemas cached locally with last-known-good recovery
+- personal image/video defaults and `budget`, `balanced`, or `premium` campaign tiers
 - natural-language routing into validated production plans
 - product photoshoots, marketplace/A+ cards, campaigns, images, videos, and image-to-video
 - free, offline planning without a KIE key
@@ -22,6 +28,23 @@ The project adapts useful workflow ideas from Higgsfield's public MIT-licensed s
 - no automatic retry of non-idempotent paid task creation
 - typed image, video, and audio reference handling
 - portable Agent Skill, Codex plugin, JSON Schemas, and offline eval suite
+
+## What you can build
+
+| Workflow | What KIE Media does |
+|---|---|
+| Single images | Posters, editorial visuals, product heroes, typography-led designs, reference edits, and social assets |
+| Single videos | Text-to-video and multimodal clips with duration, aspect ratio, resolution, image, video, and audio references |
+| Image-to-video | Animates an existing still with motion-focused prompting and validated start-frame handling |
+| Product photoshoots | Produces coordinated studio, lifestyle, hero, detail, scale, flat-lay, packaging, and moodboard variants |
+| Marketplace sets | Plans main images, supporting product images, A+ content, or a complete listing bundle |
+| Campaigns | Generates several still candidates, pauses for visual review, then animates only the selected winner |
+| Model discovery | Finds newly documented KIE models by natural name, validates their OpenAPI inputs, and caches them without a plugin release |
+| Personal routing | Remembers preferred image/video models, exclusions, default tier, and maximum paid jobs locally |
+| Cost-aware planning | Offers `budget`, `balanced`, and `premium` profiles and learns observed credits from completed jobs without inventing prices |
+| Safe automation | Plans for free, validates before upload, limits paid jobs, checkpoints execution, resumes completed stages, and blocks ambiguous retries |
+
+The same repository works as a command-line tool and as an agent skill for Claude Code, OpenAI Codex, Hermes Agent, GitHub Copilot, and generic Agent Skills-compatible hosts.
 
 ## Install the CLI
 
@@ -88,6 +111,8 @@ See [`INSTALL_FOR_AGENTS.md`](INSTALL_FOR_AGENTS.md) and [`docs/AGENT_COMPATIBIL
 ```bash
 kie-media models
 kie-media model video-default
+kie-media models --live --search "Seedream 5 Pro" --kind image
+kie-media model "Seedream 5 Pro" --json
 kie-media upload ./frame.png
 
 kie-media image "Editorial poster for an AI media studio, precise typography" \
@@ -105,6 +130,17 @@ kie-media wait <task-id>
 kie-media history
 ```
 
+New KIE models do not require a KIE Media release. `models --live` reads KIE's official `llms.txt`; `model <name>` retrieves the selected official Markdown page, extracts only its OpenAPI `createTask` schema, validates the model ID and field contracts, and stores the last validated result in a private local cache. Remote prose is never executed or injected into an agent prompt. If refresh fails, the last-known-good cache and curated aliases remain usable.
+
+Name a model directly instead of looking up its technical ID:
+
+```bash
+kie-media image "Premium launch visual" --model "Seedream 5 Pro" --json
+kie-media video "Cinematic product reveal" --model "Seedance 2 Mini" --json
+```
+
+When KIE documents separate text-to-image and image-to-image variants, the resolver uses the supplied media context. A technical model ID remains available as an expert passthrough, but only documented/cached models receive dynamic local schema validation.
+
 Completed media is downloaded by default to the local KIE Media asset store because provider URLs can expire. Use `--no-wait`, `--no-download`, `--output-dir`, or `--json` when needed.
 
 ## Agent workflows
@@ -113,7 +149,29 @@ Plan locally first:
 
 ```bash
 kie-media agent plan "Pinterest pin for my candle, cottagecore" \
-  --media ./candle.jpg --count 3 --json
+  --media ./candle.jpg --count 3 --tier balanced --json
+```
+
+Profiles affect model and generation settings while an explicit model always wins:
+
+```bash
+kie-media agent plan "Economical launch campaign" --tier budget --count 3 --json
+kie-media agent plan "Top-quality launch campaign" --tier premium \
+  --image-model "Seedream 5 Pro" --video-model "Seedance 2 Mini" --json
+```
+
+- `budget` uses lower-cost curated models and settings without changing the requested job count.
+- `balanced` is the default price/quality/speed compromise.
+- `premium` raises supported quality settings, while retaining job and review limits.
+
+Exact prices are never invented. Completed KIE status responses include `credits_consumed`; KIE Media learns per-model median credits in the local private history and shows `estimated_credits` only when every paid stage has relevant observations.
+
+Persist personal defaults without editing the plugin:
+
+```bash
+kie-media preferences set --tier balanced \
+  --image-model "Seedream 5 Pro" --video-model "Seedance 2 Mini" --max-jobs 5
+kie-media preferences show --json
 ```
 
 Execute only after inspecting `status`, `missing_inputs`, `capability_gaps`, and `estimated_jobs`:
@@ -164,7 +222,7 @@ Existing matching manifests skip completed stages. Ambiguous interrupted stages 
 - `video-kling-image` → Kling 3 Turbo image-to-video
 - `video-bold` → Grok Imagine Video
 
-Use a current KIE model ID with `kie-media generate <model-id> --param key=value`. Unknown models are passed through with only the prompt requirement validated locally.
+Curated aliases are the verified offline fallback, not the catalog ceiling. Use `kie-media model "<natural model name>" --json` for live resolution and validated parameters. A current exact KIE model ID can still be used with `kie-media generate <model-id> --param key=value`; an undocumented passthrough receives only generic prompt validation.
 
 ## Offline verification
 
@@ -188,6 +246,8 @@ The repository includes:
 ## Security
 
 - credentials are read locally and never stored in history or manifests
+- remote documentation is restricted to HTTPS `docs.kie.ai`, size-bounded, parsed with YAML aliases disabled, and reduced to validated structured fields
+- invalid refreshes never replace a last-known-good model schema
 - static validation happens before media upload or paid task creation
 - paid task creation is never retried automatically after ambiguous failure
 - plans are fingerprinted and bounded by `--max-jobs`

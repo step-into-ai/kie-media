@@ -6,7 +6,8 @@
   "additionalProperties": false,
   "required": [
     "version", "workflow", "route_reason", "brief", "status", "executable",
-    "mode", "scope", "aspect_ratio", "duration", "count", "budget",
+    "mode", "scope", "aspect_ratio", "duration", "count", "budget", "tier",
+    "estimated_credits", "credit_estimate_basis",
     "output_dir", "required_inputs", "missing_inputs", "assumptions",
     "capability_gaps", "stages", "estimated_jobs"
   ],
@@ -25,6 +26,9 @@
     "duration": {"type": ["integer", "null"]},
     "count": {"type": "integer", "minimum": 1, "maximum": 20},
     "budget": {"enum": ["quality", "fast"]},
+    "tier": {"enum": ["budget", "balanced", "premium"]},
+    "estimated_credits": {"type": ["number", "null"], "minimum": 0},
+    "credit_estimate_basis": {"enum": ["observed_local_history", "unavailable", "not_applicable"]},
     "output_dir": {"type": "string"},
     "required_inputs": {"type": "array", "items": {"type": "string"}},
     "missing_inputs": {"type": "array", "items": {"type": "string"}},

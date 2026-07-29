@@ -62,7 +62,7 @@ export KIE_API_KEY="..."
 kie-media credits --json
 ```
 
-Never commit the key. Agents should plan first, inspect `estimated_jobs`, and honor the default execution limit of five jobs. A larger bundle requires an explicit `--max-jobs N`.
+Never commit the key. Agents should plan first, inspect `estimated_jobs` and any observation-based `estimated_credits`, and honor the default execution limit of five jobs. A larger bundle requires an explicit `--max-jobs N`.
 
 ## 4. Verify discovery without spending credits
 
@@ -81,4 +81,11 @@ Run the portable offline eval suite for stronger verification:
 
 ```bash
 PYTHONPATH=src:. python3 scripts/evaluate_planner.py --json
+```
+
+Optionally verify free live model discovery without a KIE key or paid task:
+
+```bash
+kie-media models --live --search "Seedream 5 Pro" --json
+kie-media model "Seedream 5 Pro" --json
 ```

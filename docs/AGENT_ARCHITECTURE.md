@@ -3,7 +3,9 @@
 ## Components
 
 - `kie_media.agent` — intent router, production planner, independent prompt templates, plan executor, private manifests.
-- `kie_media.models` — authoritative local KIE contracts and aliases.
+- `kie_media.models` — curated offline KIE contracts, aliases, and shared validation.
+- `kie_media.catalog` — official KIE `llms.txt` discovery, defensive OpenAPI extraction, natural-name resolution, and private last-known-good cache.
+- `kie_media.preferences` — private per-user tier/model/job defaults.
 - `kie_media.client` — uploads, jobs, polling, download verification.
 - `kie_media.history` — redacted audit trail.
 - Agent Skills-compatible host — natural-language orchestration and visual review using `skills/kie-media`.
@@ -13,11 +15,11 @@
 A plan contains:
 
 - `workflow`, `route_reason`, `status`, `executable`
-- mode/scope/aspect/duration/count/budget
+- mode/scope/aspect/duration/count, legacy budget, and `budget|balanced|premium` tier
 - required and missing inputs
 - explicit backend capability gaps
 - ordered stages with `role`, `action`, dependencies and argv-style command arrays
-- `estimated_jobs` (job count, never a fabricated credit estimate)
+- `estimated_jobs` plus optional `estimated_credits` based only on complete local observations
 
 Statuses:
 
@@ -46,6 +48,16 @@ Priority is intentional:
 7. generic image
 
 This prevents a phrase such as “hero banner showing serum being applied” from routing to a generic image model and makes output-format tie-breakers deterministic.
+
+## Model resolution and personalization
+
+Explicit user model → personal default → tier ranking → curated fallback. Explicit compatible model wishes always win. Natural names are resolved at runtime against KIE's official documentation; exact technical IDs remain available to expert users. Separate text/reference model pages are disambiguated from the workflow's media context.
+
+Remote documentation is untrusted data. The catalog accepts only bounded HTTPS content from `docs.kie.ai`, parses YAML with aliases disabled, follows only local OpenAPI references, and persists only validated model IDs plus typed field contracts. Free prose never enters agent instructions. A failed or contradictory refresh cannot replace a previously validated schema.
+
+`budget` uses fast/lower-resolution curated routes, `balanced` uses standard settings, and `premium` raises supported quality/resolution without increasing requested job count or bypassing `--max-jobs`. Since KIE has no general trustworthy preflight price endpoint, exact prices are never inferred from tier labels.
+
+Successful `status`/`wait` results include `credits_consumed` and enter the existing private history. The planner computes per-model medians and exposes an estimate only when every paid stage is covered. These mutable informational fields are deliberately excluded from the resume fingerprint.
 
 ## Review rubric
 
