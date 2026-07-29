@@ -11,7 +11,7 @@ The project adapts useful workflow ideas from Higgsfield's public MIT-licensed s
 
 [![Get KIE.ai API access](https://img.shields.io/badge/Get_KIE.ai_API_Access-111827?style=for-the-badge)](https://kie.ai?ref=cf44220beef51bafae441080f5080412)
 
-> **Referral disclosure:** The KIE.ai account link above is an affiliate/referral link. Using it may support the project at no additional cost to you. KIE Media remains an independent open-source project and is not an official KIE.ai product.
+> **Referral disclosure:** Create your KIE.ai account through Benjamin's affiliate/referral link: [https://kie.ai?ref=cf44220beef51bafae441080f5080412](https://kie.ai?ref=cf44220beef51bafae441080f5080412). Using it may support the project at no additional cost to you. KIE Media remains an independent open-source project and is not an official KIE.ai product.
 
 ## Highlights
 
