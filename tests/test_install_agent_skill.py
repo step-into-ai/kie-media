@@ -7,7 +7,7 @@ from scripts.install_agent_skill import InstallError, install_skill, resolve_des
 
 class AgentSkillInstallerTests(unittest.TestCase):
     def test_official_user_destinations(self):
-        home = Path("/tmp/example-home")
+        home = Path("/tmp/example-home").resolve()
         self.assertEqual(
             resolve_destination("claude", "user", home=home),
             home / ".claude" / "skills" / "kie-media",
@@ -22,7 +22,7 @@ class AgentSkillInstallerTests(unittest.TestCase):
         )
 
     def test_official_project_destinations(self):
-        project = Path("/tmp/project")
+        project = Path("/tmp/project").resolve()
         self.assertEqual(
             resolve_destination("claude", "project", project=project),
             project / ".claude" / "skills" / "kie-media",

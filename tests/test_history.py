@@ -1,3 +1,4 @@
+import os
 import json
 import stat
 import tempfile
@@ -25,7 +26,8 @@ class HistoryTests(unittest.TestCase):
             text = path.read_text()
             self.assertNotIn("secret", text)
             self.assertNotIn("Authorization", text)
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
 
     def test_non_positive_limit_returns_no_rows(self):
         with tempfile.TemporaryDirectory() as td:

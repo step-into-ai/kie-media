@@ -1,5 +1,23 @@
 # KIE Media
 
+## Editable production projects (0.4)
+
+KIE Media now runs natively on Windows as well as POSIX hosts. The new scene-project workflow connects images, reviewed animation, KIE speech/music, local montage, targeted scene edits and portable project handoff. Language requests use documented KIE Chat Completions, Responses, Claude Messages and Gemini transports.
+
+```bash
+kie-media doctor --json
+kie-media catalog audit --refresh --json
+kie-media project init ./spot/project.json "A three-scene product spot" --shots 3 --json
+kie-media project plan ./spot/project.json --json
+kie-media project edit ./spot/project.json scene-2 --motion "Slow orbit" --dry-run --json
+```
+
+Planning is free. Set your scene prompts/references/narration, generate within a job cap, inspect and record reviews, then render with FFmpeg. The edit preview identifies which stages need new jobs. Unchanged outputs retain their hashes and receipts. `project report` exposes known costs and missing observations; `project export` creates a portable ZIP after active jobs are resolved.
+
+Read [scene production and selective editing](skills/kie-media/references/projects.md), [audio/language/operation contracts](skills/kie-media/references/operations.md), and [demonstration recipes](docs/DEMONSTRATIONS.md). Windows installation uses `python -m venv .venv` followed by `.venv\Scripts\python -m pip install .`. FFmpeg/ffprobe are optional for API use and required for local montage/media import.
+
+Coverage is explicit: discovered documents, validated schemas and live-tested outputs are different evidence levels. Some KIE docs expose unsupported transports or transient HTML; `catalog audit` records those gaps. Native 3D mesh generation is not claimed. No paid KIE generations are exercised by the offline tests. Windows file privacy uses inherited folder ACLs, not POSIX mode guarantees.
+
 [![CI](https://github.com/step-into-ai/kie-media/actions/workflows/ci.yml/badge.svg)](https://github.com/step-into-ai/kie-media/actions/workflows/ci.yml)
 [![Agent Skills](https://img.shields.io/badge/Agent%20Skills-compatible-7c3aed)](https://agentskills.io/specification)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776ab)](https://www.python.org/)
@@ -199,7 +217,7 @@ Supported routes:
 - `product-photoshoot`
 - `marketplace-cards`
 - `campaign`
-- `video-explainer` as an honest non-executable hybrid plan
+- `video-explainer` as a legacy non-executable outline; use `project` for executable scene/audio/montage production
 
 Campaigns stop at `awaiting_review` after still generation. Resume the **same** manifest with a reviewed candidate:
 

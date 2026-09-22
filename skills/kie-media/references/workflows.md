@@ -21,4 +21,4 @@ Requires a product image. Scopes: `main` (1), `product-images` (6), `aplus` (8),
 Generates the requested candidate count and stops at a blocking review stage. If animation was requested, the plan also contains one post-review `generate-selected` stage. Use vision, then resume the same manifest with `--selected-file`; only a candidate recorded by that manifest is accepted.
 
 ## video-explainer
-Currently `hybrid`, not executable. The planner exposes research, script, audio, clips and assembly phases plus missing audio/voice/timeline capabilities. Never return loose clips as if they were a complete narrated explainer.
+The legacy `agent plan` route remains a `hybrid` outline. For executable narration, scenes and montage, use the `project` workflow in [projects.md](projects.md). Never return loose clips as if they were a complete narrated explainer.

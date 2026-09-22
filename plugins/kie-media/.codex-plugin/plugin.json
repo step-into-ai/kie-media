@@ -1,6 +1,6 @@
 {
   "name": "kie-media",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Safe agentic KIE.ai image and video production with deterministic planning, review gates, and resumable execution.",
   "skills": "./skills/"
 }

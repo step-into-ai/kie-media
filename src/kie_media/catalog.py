@@ -12,9 +12,11 @@ from urllib.parse import urlparse
 
 import requests
 import yaml
+from jsonschema import Draft202012Validator
 from yaml.events import AliasEvent
 
 from .models import FieldSpec, ModelSpec
+from .storage import atomic_json
 
 
 class CatalogError(ValueError):
@@ -73,6 +75,9 @@ def _spec_to_dict(spec: ModelSpec) -> dict[str, Any]:
         "description": spec.description,
         "aliases": list(spec.aliases),
         "docs": spec.docs,
+        "input_schema": spec.input_schema,
+        "family": spec.family,
+        "endpoint": spec.endpoint,
         "fields": {
             name: {
                 "type": field.type.__name__,
@@ -118,31 +123,14 @@ def _spec_from_dict(value: dict[str, Any]) -> ModelSpec:
         aliases=tuple(str(item) for item in value.get("aliases") or ()),
         fields=fields,
         docs=str(value.get("docs") or ""),
+        input_schema=dict(value.get("input_schema") or {}),
+        family=str(value.get("family") or "task"),
+        endpoint=str(value.get("endpoint") or "/api/v1/jobs/createTask"),
     )
 
 
 def _atomic_private_json(path: Path, value: Any) -> None:
-    parent_existed = path.parent.exists()
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if not parent_existed:
-        try:
-            os.chmod(path.parent, 0o700)
-        except OSError:
-            pass
-    fd, temp_name = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
-    temp = Path(temp_name)
-    try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            json.dump(value, handle, ensure_ascii=False, sort_keys=True, indent=2)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(temp, path)
-        os.chmod(path, 0o600)
-    except Exception:
-        temp.unlink(missing_ok=True)
-        raise
+    atomic_json(path, value)
 
 
 def _merge_schema(parts: list[dict[str, Any]]) -> dict[str, Any]:
@@ -223,7 +211,7 @@ class DocsCatalog:
             and not parsed.fragment
         )
 
-    def _fetch_text(self, url: str, maximum: int) -> str:
+    def _fetch_text(self, url: str, maximum: int, _attempt: int = 0) -> str:
         if url != self.INDEX_URL and not self._trusted_document_url(url):
             raise CatalogError(f"Refusing untrusted KIE documentation URL: {url}")
         try:
@@ -252,6 +240,9 @@ class DocsCatalog:
             raise CatalogError("KIE documentation response exceeds safety limit")
         content_type = str(response.headers.get("content-type") or "").casefold()
         if content_type and not any(item in content_type for item in ("text/plain", "text/markdown", "application/octet-stream")):
+            if "text/html" in content_type and _attempt < 2:
+                time.sleep(0.2)
+                return self._fetch_text(url, maximum, _attempt + 1)
             raise CatalogError(f"Unexpected KIE documentation content type: {content_type}")
         try:
             return content.decode("utf-8")
@@ -279,6 +270,8 @@ class DocsCatalog:
                 kind = "audio"
             elif "3d" in category_folded:
                 kind = "3d"
+            elif "chat" in category_folded or "llm" in category_folded:
+                kind = "chat"
             else:
                 kind = "other"
             entries.append(CatalogEntry(title.strip(), url, kind, category.strip(), description.strip()))
@@ -402,17 +395,35 @@ class DocsCatalog:
     def _extract_model(entry: CatalogEntry, text: str) -> ModelSpec:
         documents = re.findall(r"```ya?ml\s*\n(.*?)\n```", text, flags=re.DOTALL | re.IGNORECASE)
         root: dict[str, Any] | None = None
+        endpoint = "/api/v1/jobs/createTask"
+        family = "task"
         for document in documents:
             try:
                 parsed = yaml.load(document, Loader=_NoAliasSafeLoader)
             except yaml.YAMLError as exc:
                 raise CatalogError(f"Invalid OpenAPI YAML for {entry.title}: {exc}") from exc
-            if isinstance(parsed, dict) and "/api/v1/jobs/createTask" in dict(parsed.get("paths") or {}):
-                root = parsed
-                break
+            if isinstance(parsed, dict):
+                for candidate in dict(parsed.get("paths") or {}):
+                    if candidate == "/api/v1/jobs/createTask":
+                        root, endpoint, family = parsed, candidate, "task"
+                        break
+                    if re.fullmatch(r"/[A-Za-z0-9._-]+/v1/chat/completions", candidate):
+                        root, endpoint, family = parsed, candidate, "chat"
+                        break
+                    if candidate in {"/codex/v1/responses", "/api/v1/responses"}:
+                        root, endpoint, family = parsed, candidate, "responses"
+                        break
+                    if candidate == "/claude/v1/messages":
+                        root, endpoint, family = parsed, candidate, "messages"
+                        break
+                    if re.fullmatch(r"/gemini/v1/models/[A-Za-z0-9._-]+:(?:streamGenerateContent|generateContent)", candidate):
+                        root, endpoint, family = parsed, candidate, "gemini"
+                        break
+                if root is not None:
+                    break
         if root is None:
-            raise CatalogError(f"{entry.title} is not a documented KIE createTask model")
-        post = root["paths"]["/api/v1/jobs/createTask"].get("post") or {}
+            raise CatalogError(f"{entry.title} has no supported task/chat/responses endpoint")
+        post = root["paths"][endpoint].get("post") or {}
         try:
             body = post["requestBody"]["content"]["application/json"]["schema"]
         except (KeyError, TypeError) as exc:
@@ -420,13 +431,36 @@ class DocsCatalog:
         body = _resolve_schema(body, root)
         properties = dict(body.get("properties") or {})
         model_schema = _resolve_schema(properties.get("model") or {}, root)
-        model_id = model_schema.get("default")
-        if not model_id and model_schema.get("enum"):
+        model_id = model_schema.get("const") or model_schema.get("default")
+        if not model_id and len(model_schema.get("enum") or []) == 1:
             model_id = model_schema["enum"][0]
-        input_schema = _resolve_schema(properties.get("input") or {}, root)
+        if not model_id and not model_schema.get("enum"):
+            model_id = model_schema.get("example")
+            if not model_id and len(model_schema.get("examples") or []) == 1:
+                model_id = model_schema["examples"][0]
+        if family == "chat" and not model_schema:
+            model_id = endpoint.split("/")[1]
+        if family == "gemini" and not model_schema:
+            model_id = endpoint.rsplit("/", 1)[1].split(":")[0]
+        multiple_variants = family != "task" and not model_id and len(model_schema.get("enum") or []) > 1
+        if multiple_variants:
+            model_id = post.get("operationId") or _normalize(entry.title).replace(" ", "-")
+        input_schema = _resolve_schema(properties.get("input") or {}, root) if family == "task" else body
         if not isinstance(model_id, str) or not model_id.strip() or not isinstance(input_schema, dict):
             raise CatalogError(f"{entry.title} has no trustworthy model ID or input schema")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9/_.:-]{0,199}", model_id):
+            raise CatalogError("Invalid documented model selector")
+        if family != "task" and "model" in properties and not multiple_variants:
+            input_schema["properties"]["model"] = {**model_schema, "const": model_id, "default": model_id}
         input_properties = dict(input_schema.get("properties") or {})
+        for combination in ("oneOf", "anyOf"):
+            for variant in input_schema.get(combination, []):
+                for name, contract in variant.get("properties", {}).items():
+                    input_properties.setdefault(name, contract)
+        # Keep alternatives intact. The union at the envelope only rejects
+        # unknown names; required/type constraints still belong to each branch.
+        if not input_schema.get("properties") and input_properties:
+            input_schema["properties"] = {name: {} for name in input_properties}
         required = {str(item) for item in input_schema.get("required") or []}
         type_map = {"string": str, "integer": int, "number": float, "boolean": bool, "array": list, "object": dict}
         fields: dict[str, FieldSpec] = {}
@@ -450,19 +484,27 @@ class DocsCatalog:
                 min_length=schema.get("minLength"),
                 max_length=schema.get("maxLength"),
             )
-        if "prompt" not in fields and entry.kind in {"image", "video"}:
-            raise CatalogError(f"{entry.title} does not expose a prompt field")
+        if not input_properties:
+            raise CatalogError(f"{entry.title} does not expose a usable input contract")
+        input_schema.setdefault("additionalProperties", False)
+        try:
+            Draft202012Validator.check_schema(input_schema)
+        except Exception as exc:
+            raise CatalogError(f"Invalid input schema for {entry.title}: {exc}") from exc
         description = str(post.get("description") or entry.description or "").strip()
         description = " ".join(description.split())[:500]
         name = str(post.get("summary") or entry.title).strip()
         return ModelSpec(
             id=model_id.strip(),
             name=name,
-            kind=entry.kind,
+            kind="chat" if family != "task" else entry.kind,
             description=description,
             aliases=(entry.title,),
             fields=fields,
             docs=entry.url.removesuffix(".md"),
+            input_schema=input_schema,
+            family=family,
+            endpoint=endpoint,
         )
 
     @staticmethod

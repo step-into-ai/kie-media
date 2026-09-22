@@ -1,6 +1,6 @@
 # Higgsfield parity and intentional gaps
 
-Compared with public `higgsfield-ai/skills` (seven skills, MIT):
+July baseline: public `higgsfield-ai/skills` (seven skills, MIT). September 2026 has nine skills, adding brandkit and YouTube thumbnails. CLI tables add GPT Image 2.5 and Seedance 2.5; website features are not assumed to be CLI features.
 
 Implemented/adapted:
 
@@ -9,13 +9,15 @@ Implemented/adapted:
 - marketplace main/secondary/A+ bundles
 - campaigns with a visual review gate and selected-candidate continuation
 - fingerprinted resumable agent plans, paid-stage checkpoints, safety rules and evaluation scenarios
+- native Windows runtime, nested operation schemas and KIE language transports
+- scene projects with references, speech/music jobs, local montage, captions, targeted edits and portable handoff
 
 Unavailable in the current KIE adapter:
 
 - Soul reusable identity-model training
 - Marketing Studio product/avatar/hook/setting registries
 - Virality Predictor
-- native narrated-explainer audio, voice catalog and timeline assembler
+- standalone voice-catalog browsing and autonomous vision-based QA (TTS selection and local assembly are implemented)
 - draw-to-video/reframe workflows
 
 Intentionally excluded from KIE Media V1:

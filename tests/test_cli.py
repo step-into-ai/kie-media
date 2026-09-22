@@ -15,6 +15,15 @@ from kie_media.models import FieldSpec, ModelSpec, ModelValidationError
 
 
 class CliTests(unittest.TestCase):
+    def test_refresh_does_not_return_stale_cached_schema_without_fetch(self):
+        from kie_media.cli import _resolve_model
+        from kie_media.models import get_model
+        spec = get_model("image-fast")
+        with patch("kie_media.cli.DocsCatalog") as catalog:
+            catalog.return_value.resolve.return_value = spec
+            _resolve_model("image-fast", refresh=True)
+            catalog.return_value.resolve.assert_called_once()
+
     def test_parse_key_values_parses_json_scalars_and_arrays(self):
         parsed = parse_key_values(["duration=5", "generate_audio=false", 'image_urls=["https://x/a.png"]'])
         self.assertEqual(parsed, {"duration": 5, "generate_audio": False, "image_urls": ["https://x/a.png"]})
@@ -24,7 +33,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             build_parser().parse_args(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), "kie-media 0.3.0")
+        self.assertEqual(output.getvalue().strip(), "kie-media 0.4.0")
 
     def test_generate_command_matches_agent_friendly_shape(self):
         args = build_parser().parse_args(["generate", "image-fast", "--prompt", "hello", "--wait"])

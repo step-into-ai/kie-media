@@ -11,11 +11,14 @@ permissions:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      PYTHONPATH: .
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11", "3.12", "3.13"]
+        os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -27,16 +30,16 @@ jobs:
       - name: Compile
         run: python -m compileall -q src tests scripts
       - name: Unit tests
-        run: PYTHONPATH=src:. python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -v
       - name: Offline planner evals
-        run: PYTHONPATH=src:. python scripts/evaluate_planner.py
+        run: python scripts/evaluate_planner.py
       - name: Validate agent distribution
         run: |
           python scripts/validate_distribution.py
-          PYTHONPATH=. python scripts/sync_codex_plugin.py --check
+          python scripts/sync_codex_plugin.py --check
       - name: Secret scan
         run: python scripts/security_scan.py
       - name: Build wheel
         run: python -m pip wheel . --no-deps -w dist
       - name: Inspect wheel
-        run: python -m zipfile -l dist/kie_media-*.whl
+        run: python -c "import glob,zipfile; zipfile.ZipFile(glob.glob('dist/kie_media-*.whl')[0]).printdir()"

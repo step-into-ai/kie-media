@@ -4,38 +4,77 @@
   "runtime": "Agent Skills-compatible host + kie-media CLI",
   "entrypoints": {
     "plan": "kie-media agent plan",
-    "run": "kie-media agent run"
+    "run": "kie-media agent run",
+    "project": "kie-media project",
+    "chat": "kie-media chat",
+    "catalog": "kie-media catalog audit"
   },
   "roles": [
     {
       "id": "creative-director",
       "purpose": "Classify intent, choose a workflow, identify only genuine blockers, and protect the production budget.",
-      "inputs": ["natural-language brief", "media", "format", "count"],
-      "outputs": ["ProductionPlan", "routing reason", "missing inputs"]
+      "inputs": [
+        "natural-language brief",
+        "media",
+        "format",
+        "count"
+      ],
+      "outputs": [
+        "ProductionPlan",
+        "routing reason",
+        "missing inputs"
+      ]
     },
     {
       "id": "prompt-engineer",
       "purpose": "Convert the brief into short model-aware prompts and independent product/marketplace templates.",
-      "inputs": ["brief", "workflow mode", "brand/product references"],
-      "outputs": ["prompt per stage", "shared visual constraints"]
+      "inputs": [
+        "brief",
+        "workflow mode",
+        "brand/product references"
+      ],
+      "outputs": [
+        "prompt per stage",
+        "shared visual constraints"
+      ]
     },
     {
       "id": "image-producer",
       "purpose": "Execute validated image jobs with the correct KIE model and references.",
-      "inputs": ["generation stage"],
-      "outputs": ["task id", "downloaded image", "history record"]
+      "inputs": [
+        "generation stage"
+      ],
+      "outputs": [
+        "task id",
+        "downloaded image",
+        "history record"
+      ]
     },
     {
       "id": "video-producer",
       "purpose": "Execute text-to-video or image-to-video stages with motion-focused prompts.",
-      "inputs": ["generation stage", "optional selected still"],
-      "outputs": ["task id", "downloaded video", "history record"]
+      "inputs": [
+        "generation stage",
+        "optional selected still"
+      ],
+      "outputs": [
+        "task id",
+        "downloaded video",
+        "history record"
+      ]
     },
     {
       "id": "reviewer-delivery",
       "purpose": "Inspect outputs, reject defects, select campaign winners, and deliver persistent local files with a concise summary.",
-      "inputs": ["generated files", "original brief"],
-      "outputs": ["review decision", "selected assets", "delivery summary"]
+      "inputs": [
+        "generated files",
+        "original brief"
+      ],
+      "outputs": [
+        "review decision",
+        "selected assets",
+        "delivery summary"
+      ]
     }
   ],
   "workflows": [
@@ -45,6 +84,12 @@
     "product-photoshoot",
     "marketplace-cards",
     "campaign",
-    "video-explainer (hybrid plan only)"
+    "video-explainer (hybrid plan only)",
+    "scene-project",
+    "selective-scene-edit",
+    "audio-generation",
+    "language-request",
+    "local-montage",
+    "project-handoff"
   ]
 }

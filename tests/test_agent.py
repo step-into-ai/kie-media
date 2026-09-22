@@ -12,6 +12,19 @@ from kie_media.agent import (
 
 
 class AgentPlanningTests(unittest.TestCase):
+    def test_storyboard_spot_cannot_fall_back_to_one_product_image(self):
+        plan = build_plan("Plan a three-scene 9:16 product launch spot with narration, music, storyboard and final edit", media=["product.png"])
+        self.assertEqual(plan.status, "hybrid")
+        self.assertFalse(plan.executable)
+        self.assertEqual(plan.estimated_jobs, 0)
+        self.assertIn("use_project_workflow", plan.capability_gaps)
+
+    def test_explicit_long_video_uses_selected_models_limits(self):
+        plan = build_plan("A cinematic video", video_model="video-bold", duration=30)
+        self.assertEqual(plan.duration, 30)
+        with self.assertRaises(ValueError):
+            build_plan("A cinematic video", video_model="video-default", duration=30)
+
     def test_quick_image_routes_to_fast_image_model(self):
         plan = build_plan("Make me a quick photorealistic image of a fox in snow", budget="fast")
         self.assertEqual(plan.workflow, "image")
@@ -304,7 +317,8 @@ class AgentExecutionTests(unittest.TestCase):
         plan = build_plan("A square icon for an AI studio", workflow="image", aspect_ratio="1:1")
         with tempfile.TemporaryDirectory() as td:
             path = save_manifest(Path(td) / "run.json", plan, {"state": "planned", "results": []})
-            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            if os.name != "nt":
+                self.assertEqual(path.stat().st_mode & 0o777, 0o600)
             self.assertIn('"workflow": "image"', path.read_text())
 
     def test_manifest_temp_file_is_private_during_write(self):
@@ -318,7 +332,8 @@ class AgentExecutionTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as td, patch("kie_media.agent.json.dump", side_effect=observe_dump):
             save_manifest(Path(td) / "run.json", plan, {"state": "planned", "results": []})
-        self.assertEqual(modes, [0o600])
+        if os.name != "nt":
+            self.assertEqual(modes, [0o600])
 
     def test_manifest_roundtrip_has_plan_fingerprint_and_unique_default_names(self):
         plan = build_plan("A square icon", workflow="image")
@@ -338,14 +353,18 @@ class AgentExecutionTests(unittest.TestCase):
                 with self.assertRaises(PlanError):
                     with manifest_lock(path):
                         self.fail("second lock must not be acquired")
-            self.assertEqual((Path(str(path) + ".lock").stat().st_mode & 0o777), 0o600)
+            if os.name != "nt":
+                self.assertEqual((Path(str(path) + ".lock").stat().st_mode & 0o777), 0o600)
 
     def test_manifest_lock_canonicalizes_symlink_aliases(self):
         with tempfile.TemporaryDirectory() as td:
             real = Path(td) / "run.json"
             alias = Path(td) / "alias.json"
             real.write_text("{}")
-            alias.symlink_to(real)
+            try:
+                alias.symlink_to(real)
+            except OSError as exc:
+                self.skipTest(f"Symlink creation unavailable: {exc}")
             with manifest_lock(real):
                 with self.assertRaises(PlanError):
                     with manifest_lock(alias):

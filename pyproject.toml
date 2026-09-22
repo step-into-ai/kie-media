@@ -4,11 +4,11 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kie-media"
-version = "0.3.0"
+version = "0.4.0"
 description = "Portable KIE.ai media agent with live models, safe image/video workflows, campaigns, and resumable execution"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["requests>=2.31", "PyYAML>=6.0"]
+dependencies = ["requests>=2.31", "PyYAML>=6.0", "jsonschema>=4.19"]
 license = {text = "MIT"}
 authors = [{name = "Benjamin and Olymp"}]
 keywords = ["kie-ai", "agent-skills", "image-generation", "video-generation", "claude-code", "codex"]
