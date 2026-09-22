@@ -1,7 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import copy
+import math
+import json
 from typing import Any
+from jsonschema import Draft202012Validator
 
 
 class ModelValidationError(ValueError):
@@ -31,6 +35,9 @@ class ModelSpec:
     aliases: tuple[str, ...] = ()
     fields: dict[str, FieldSpec] = field(default_factory=dict)
     docs: str = ""
+    input_schema: dict[str, Any] = field(default_factory=dict)
+    family: str = "task"
+    endpoint: str = "/api/v1/jobs/createTask"
 
 
 IMAGE_RATIOS = (
@@ -179,6 +186,8 @@ def get_model(name: str) -> ModelSpec:
 
 
 def _coerce(value: Any, expected: type) -> Any:
+    if expected in (int, float) and (isinstance(value, bool) or isinstance(value, float) and not math.isfinite(value)):
+        raise ModelValidationError("Expected a finite number, not boolean/NaN/infinity")
     if isinstance(value, expected):
         return value
     if expected is bool and isinstance(value, str):
@@ -197,7 +206,7 @@ def _coerce(value: Any, expected: type) -> Any:
 
 
 def _validate_cross_fields(model: ModelSpec, result: dict[str, Any]) -> None:
-    if not str(result.get("prompt", "")).strip():
+    if "prompt" in model.fields and model.fields["prompt"].required and not str(result.get("prompt", "")).strip():
         raise ModelValidationError("prompt cannot be empty")
     if model.id == "gpt-image-2-text-to-image":
         resolution = result.get("resolution")
@@ -225,10 +234,29 @@ def _validate_cross_fields(model: ModelSpec, result: dict[str, Any]) -> None:
 
 
 def prepare_model_input(model: ModelSpec, values: dict[str, Any]) -> dict[str, Any]:
+    try:
+        json.dumps(values, allow_nan=False)
+    except (ValueError, TypeError) as exc:
+        raise ModelValidationError("Input must be finite JSON data") from exc
     if model.kind == "custom":
         if not str(values.get("prompt", "")).strip():
             raise ModelValidationError("prompt is required for uncatalogued models")
         return dict(values)
+    if model.input_schema:
+        result = copy.deepcopy(values)
+        properties = model.input_schema.get("properties", {})
+        for key, schema in properties.items():
+            if key not in result and "default" in schema:
+                result[key] = copy.deepcopy(schema["default"])
+            elif key in result and isinstance(result[key], str) and key in model.fields and model.fields[key].type in (int, float, bool):
+                result[key] = _coerce(result[key], model.fields[key].type)
+        errors = list(Draft202012Validator(model.input_schema).iter_errors(result))
+        if errors:
+            issue = errors[0]
+            location = ".".join(map(str, issue.absolute_path)) or "input"
+            raise ModelValidationError(f"Invalid {location} for {model.id}: {issue.message}")
+        _validate_cross_fields(model, result)
+        return result
     unknown = set(values) - set(model.fields)
     if unknown:
         raise ModelValidationError(f"Unknown input parameter(s) for {model.id}: {', '.join(sorted(unknown))}")

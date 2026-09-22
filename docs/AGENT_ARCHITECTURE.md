@@ -8,9 +8,20 @@
 - `kie_media.preferences` — private per-user tier/model/job defaults.
 - `kie_media.client` — uploads, jobs, polling, download verification.
 - `kie_media.history` — redacted audit trail.
+- `kie_media.storage` — atomic JSON and native Windows/POSIX process locks.
+- `kie_media.language` — allowlisted KIE language transports, JSON/SSE responses, no automatic paid retry.
+- `kie_media.inspection` — credential-free runtime diagnostics and explicit documentation coverage.
+- `kie_media.projects` / `project_cli` — editable scenes, entity library, immutable job receipts, review, selective invalidation and handoff.
+- `kie_media.media` — shell-free FFmpeg montage and ffprobe technical checks.
 - Agent Skills-compatible host — natural-language orchestration and visual review using `skills/kie-media`.
 
 ## ProductionPlan contract
+
+This section describes the legacy `agent` planner. Multi-scene films use `project` instead; the complete operating contract is in [projects.md](../skills/kie-media/references/projects.md).
+
+Project jobs checkpoint `submitting` before paid creation and `submitted` as soon as the provider task ID is known. Known IDs resume polling/download. An unknown submission blocks further production until associated with its verified task ID. Scene fingerprints determine reuse; downloaded bytes are checked against hashes before review/reuse/render. A motion edit affects its video; a visual/reference edit affects its image and video; narration affects its audio. Final montage has a separate content-derived cache. Reviews are recorded host/user judgments, not an autonomous vision scorer. Active copies on different machines are not covered by a distributed lock.
+
+POSIX files use owner-only modes. Windows uses inherited folder ACLs and native byte-range locks; chmod modes are not advertised as Windows ACL protection.
 
 A plan contains:
 

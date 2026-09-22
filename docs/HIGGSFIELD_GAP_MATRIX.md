@@ -1,5 +1,7 @@
 # Higgsfield → KIE agent gap matrix
 
+Implementation update 2026-09-22 (0.4): native Windows runtime; task/audio and language transports; editable scene projects, KIE narration/music, FFmpeg assembly, scene-aligned captions, selective edits and portable handoff. These are implemented adapters with offline tests, not claims of paid live parity. Identity training, native 3D and autonomous visual QA remain unavailable. The table below preserves the original July comparison; the legacy explainer route is superseded by `project`.
+
 Baseline inspected 2026-07-29:
 
 - `higgsfield-ai/skills` commit `91051d3f260ae0792708c5eb0a87b07122ad3830`
@@ -26,7 +28,7 @@ This is an independent KIE implementation. Public workflow ideas are adapted; pr
 | Soul identity training | **Not available** | Current KIE adapter has reference-image consistency, not reusable identity-model training. Never fabricate a Soul equivalent. |
 | Marketing Studio product/avatar registry | **Not available** | Product images are passed directly; no product URL importer, avatar catalog, hooks or settings registry. |
 | Virality Predictor | **Not available** | No corresponding KIE analysis model is wired. Use a separate video-analysis workflow if requested. |
-| Narrated explainer audio + assembler | **Hybrid gap** | Planner emits research/script/audio/video/assembly phases but blocks execution until audio and timeline adapters exist. |
+| Narrated explainer audio + assembler | **Implemented in project workflow** | KIE TTS/music stages, reviewed scene assets, FFmpeg montage and scene captions; legacy `agent plan` remains an outline. Paid live quality is not certified. |
 | `draw_to_video` / `reframe` workflows | **Not wired** | No documented adapter in the current KIE catalog. |
 | 3D generation | **Out of V1 scope** | KIE Media V1 is image/video. |
 | Website builder/deployer | **Intentionally excluded** | Software/web production belongs to existing development/design skills. |

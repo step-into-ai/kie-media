@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import copy
-import fcntl
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .models import get_model
+from .storage import file_lock
 
 
 class PlanError(ValueError):
@@ -118,6 +119,8 @@ def _has_word(text: str, terms: tuple[str, ...]) -> bool:
 
 def _route(brief: str) -> tuple[str, str]:
     text = brief.casefold()
+    if _has(text, ("storyboard", "multi-scene", "three-scene", "3-scene", "drei szenen", "mehrere szenen", "montage", "final edit", "final cut")):
+        return "video-explainer", "scene project: use kie-media project init, then project plan/run"
     if _has(text, ("marketplace", "amazon", "listing", "a+", "produktkarte", "product card")):
         return "marketplace-cards", "marketplace/listing intent"
     if _has(text, ("explainer", "erklärvideo", "erklaervideo", "narrated", "faceless video", "document into a video")):
@@ -369,6 +372,18 @@ def _model_params(model: str, values: dict[str, Any], explicit: set[str] | None 
     unsupported = explicit - set(spec.fields)
     if unsupported:
         raise PlanError(f"Model {spec.id} does not support requested option(s): {', '.join(sorted(unsupported))}")
+    if "duration" in values and "duration" in spec.fields:
+        field = spec.fields["duration"]
+        duration = values["duration"]
+        if field.minimum is not None and float(duration) < field.minimum:
+            raise PlanError(f"{spec.id} duration must be >= {field.minimum}")
+        if field.maximum is not None and float(duration) > field.maximum:
+            raise PlanError(f"{spec.id} duration must be <= {field.maximum}")
+        candidate = str(duration) if field.type is str else duration
+        if field.enum and candidate not in field.enum:
+            raise PlanError(f"{spec.id} does not support duration {duration}")
+        if spec.id.startswith("kling/v3-turbo-") and not 3 <= float(duration) <= 15:
+            raise PlanError("Kling Turbo duration must be from 3 to 15 seconds")
     return {key: value for key, value in values.items() if key in spec.fields}
 
 
@@ -455,10 +470,8 @@ def build_plan(
     if selected != "video" and (reference_videos or reference_audio):
         raise PlanError("Video/audio reference inputs are only supported by the video workflow")
     if duration is not None:
-        if selected == "video" and not 4 <= duration <= 15:
-            raise PlanError("video duration must be from 4 to 15 seconds for the selected Seedance workflow")
-        if selected in {"image-to-video", "campaign"} and not 3 <= duration <= 15:
-            raise PlanError("animation duration must be from 3 to 15 seconds for the selected Kling workflow")
+        if isinstance(duration, bool) or not math.isfinite(duration) or duration <= 0:
+            raise PlanError("duration must be a finite positive number")
         if selected == "video-explainer" and not 10 <= duration <= 600:
             raise PlanError("explainer duration must be from 10 to 600 seconds")
     root = str(_canonical_path(output_dir or f"./kie-media-output/{selected}"))
@@ -634,7 +647,8 @@ def build_plan(
     elif selected == "video-explainer":
         chosen_aspect = aspect_ratio or "16:9"
         chosen_duration = duration or 60
-        gaps = ["audio_generation", "voice_catalog", "timeline_assembly", "subtitle_burn_in"]
+        gaps = ["use_project_workflow", "audio_generation", "voice_catalog", "timeline_assembly", "subtitle_burn_in"]
+        assumptions.append("This legacy executor does not assemble films. Use kie-media project init followed by project plan/run/render.")
         assumptions += ["one-minute duration" if duration is None else f"{duration}-second duration", "non-photoreal illustrated style"]
         stages = [
             AgentStage("research", "creative-director", "research", "Verify factual inputs and create a sources list", blocking=True),
@@ -838,20 +852,11 @@ def manifest_lock(path: str | Path):
     target = _canonical_path(path)
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock_path = Path(f"{target}.lock")
-    flags = os.O_CREAT | os.O_RDWR | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
-    descriptor = os.open(lock_path, flags, 0o600)
     try:
-        os.fchmod(descriptor, 0o600)
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise PlanError(f"Agent manifest is already running: {target}") from exc
-        yield target
-    finally:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_UN)
-        finally:
-            os.close(descriptor)
+        with file_lock(lock_path):
+            yield target
+    except BlockingIOError as exc:
+        raise PlanError(f"Agent manifest is already running: {target}") from exc
 
 
 @contextmanager

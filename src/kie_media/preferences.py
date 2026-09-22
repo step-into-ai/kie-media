@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .history import default_home
+from .storage import atomic_json
 
 
 class PreferencesError(ValueError):
@@ -84,27 +85,7 @@ class PreferencesStore:
 
     def save(self, preferences: Preferences) -> None:
         preferences.validate()
-        parent_existed = self.path.parent.exists()
-        self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        if not parent_existed:
-            try:
-                os.chmod(self.path.parent, 0o700)
-            except OSError:
-                pass
-        fd, temp_name = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
-        temp = Path(temp_name)
-        try:
-            os.fchmod(fd, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(preferences.to_dict(), handle, ensure_ascii=False, sort_keys=True, indent=2)
-                handle.write("\n")
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.replace(temp, self.path)
-            os.chmod(self.path, 0o600)
-        except Exception:
-            temp.unlink(missing_ok=True)
-            raise
+        atomic_json(self.path, preferences.to_dict())
 
     def reset(self) -> Preferences:
         preferences = Preferences()

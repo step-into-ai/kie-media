@@ -1,3 +1,4 @@
+import os
 import json
 import stat
 import tempfile
@@ -159,7 +160,8 @@ class CatalogTests(unittest.TestCase):
             mode = stat.S_IMODE((Path(td) / "models.json").stat().st_mode)
         self.assertEqual(resolved.id, by_title.id)
         self.assertEqual(by_id.id, resolved.id)
-        self.assertEqual(mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(mode, 0o600)
 
     def test_external_document_url_is_never_fetched(self):
         with tempfile.TemporaryDirectory() as td:

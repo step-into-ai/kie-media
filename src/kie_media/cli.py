@@ -103,13 +103,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     credits = sub.add_parser("credits", help="Show remaining KIE credits"); credits.add_argument("--json", action="store_true")
     models = sub.add_parser("models", help="List curated models or search KIE's live documentation")
-    models.add_argument("--kind", choices=["image", "video"])
+    models.add_argument("--kind", choices=["image", "video", "audio", "chat", "3d", "other"])
     models.add_argument("--live", action="store_true", help="Search the current KIE documentation index")
     models.add_argument("--search", default="", help="Filter live model documentation by name")
     models.add_argument("--refresh", action="store_true", help="Refresh the validated documentation cache")
     models.add_argument("--json", action="store_true")
     model = sub.add_parser("model", help="Inspect a curated, cached or live KIE model schema")
-    model.add_argument("name"); model.add_argument("--kind", choices=["image", "video"]); model.add_argument("--refresh", action="store_true"); model.add_argument("--json", action="store_true")
+    model.add_argument("name"); model.add_argument("--kind", choices=["image", "video", "audio", "chat", "3d", "other"]); model.add_argument("--refresh", action="store_true"); model.add_argument("--json", action="store_true")
     preferences = sub.add_parser("preferences", help="Show or update private per-user model preferences")
     preference_sub = preferences.add_subparsers(dest="preferences_command", required=True)
     preference_show = preference_sub.add_parser("show"); preference_show.add_argument("--json", action="store_true")
@@ -126,7 +126,7 @@ def build_parser() -> argparse.ArgumentParser:
     preference_reset = preference_sub.add_parser("reset"); preference_reset.add_argument("--json", action="store_true")
     upload = sub.add_parser("upload", help="Upload a local media file to KIE's temporary store"); upload.add_argument("path"); upload.add_argument("--json", action="store_true")
     generate = sub.add_parser("generate", help="Generate with a model or alias")
-    generate.add_argument("model"); generate.add_argument("--prompt", required=True); _add_output_flags(generate)
+    generate.add_argument("model"); generate.add_argument("--prompt"); _add_output_flags(generate)
     image = sub.add_parser("image", help="Generate an image with image-default")
     image.add_argument("prompt"); image.add_argument("--model", default="image-default"); image.add_argument("--aspect-ratio"); image.add_argument("--resolution"); _add_output_flags(image)
     video = sub.add_parser("video", help="Generate a video with video-default")
@@ -148,6 +148,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--max-jobs", type=_positive_int,
         help="Maximum paid jobs; defaults to saved preferences (initially 5)",
     )
+    doctor = sub.add_parser("doctor", help="Check local runtime without spending credits")
+    doctor.add_argument("--json", action="store_true")
+    catalog = sub.add_parser("catalog", help="Audit documented model/operation coverage")
+    catalog.add_argument("action", choices=["audit"])
+    catalog.add_argument("--kind")
+    catalog.add_argument("--limit", type=_positive_int)
+    catalog.add_argument("--refresh", action="store_true")
+    catalog.add_argument("--json", action="store_true")
+    chat = sub.add_parser("chat", help="Call a documented KIE language model (billable)")
+    chat.add_argument("model")
+    chat.add_argument("prompt", nargs="?")
+    chat.add_argument("--input-file", help="JSON request object for multimodal inputs/tools")
+    chat.add_argument("--param", action="append", default=[])
+    chat.add_argument("--stream", action="store_true", help="Print JSONL stream events and a final result")
+    chat.add_argument("--json", action="store_true")
+    from .project_cli import add_parser
+    add_parser(sub)
     return parser
 
 
@@ -167,6 +184,8 @@ def _resolve_model(
     if model.kind != "custom":
         if kind and model.kind != kind:
             raise ModelValidationError(f"Requested {kind} model, got {model.kind}: {model.id}")
+        if refresh:
+            return DocsCatalog().resolve(model.name, kind=kind or model.kind, refresh=True, needs_reference=needs_reference)
         return model
     try:
         return DocsCatalog().resolve(name, kind=kind, refresh=refresh, needs_reference=needs_reference)
@@ -188,6 +207,10 @@ def _model_detail(model: ModelSpec) -> dict[str, Any]:
         "aliases": list(model.aliases),
         "description": model.description,
         "docs": model.docs,
+        "family": model.family,
+        "endpoint": model.endpoint,
+        "input_schema": model.input_schema,
+        "support_status": "schema_validated" if model.kind != "custom" else "unvalidated_passthrough",
         "inputs": {
             key: {
                 "type": spec.type.__name__,
@@ -218,7 +241,7 @@ def _cost_estimates(history: HistoryStore) -> dict[str, float]:
 
 
 def _result_dict(result: TaskResult, paths: list[str] | None = None) -> dict[str, Any]:
-    return {"task_id": result.task_id, "model": result.model, "state": result.state, "urls": result.urls, "files": paths or [], "credits_consumed": result.credits_consumed, "fail_code": result.fail_code, "fail_message": result.fail_message}
+    return {"task_id": result.task_id, "model": result.model, "state": result.state, "urls": result.urls, "files": paths or [], "output": result.output, "credits_consumed": result.credits_consumed, "fail_code": result.fail_code, "fail_message": result.fail_message}
 
 
 def _print(value: Any, as_json: bool = False) -> None:
@@ -271,6 +294,13 @@ def _resolve_media_params(client: KieClient, values: dict[str, Any]) -> None:
         if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
             raise ModelValidationError(f"{key} must be a list of media URL/path strings")
         values[key] = _resolve_list(client, items, kind)
+    for key, value in values.items():
+        if isinstance(value, dict):
+            _resolve_media_params(client, value)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _resolve_media_params(client, item)
 
 
 def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args: argparse.Namespace, spec: ModelSpec | None = None) -> None:
@@ -322,6 +352,8 @@ def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args:
 
 def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace, model_name: str, prompt: str, shortcut_values: dict[str, Any] | None = None, expected_kind: str | None = None) -> int:
     spec = _resolve_model(model_name, kind=expected_kind, allow_passthrough=True)
+    if spec.family != "task":
+        raise ModelValidationError("Use the chat command for synchronous/streaming language models")
     if expected_kind and spec.kind != expected_kind:
         raise ModelValidationError(f"The {expected_kind} shortcut requires model kind {expected_kind}, got {spec.kind}: {spec.id}")
     values = parse_key_values(args.param)
@@ -334,7 +366,8 @@ def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace
         raise ModelValidationError("Do not mix media --param fields with dedicated media flags")
     shortcut_values = shortcut_values or {}
     if spec.kind != "custom":
-        unknown_params = set(values) - set(spec.fields)
+        known_fields = set(spec.input_schema.get("properties", {})) if spec.input_schema else set(spec.fields)
+        unknown_params = set(values) - known_fields
         if unknown_params:
             raise ModelValidationError(f"Unknown input parameter(s) for {spec.id}: {', '.join(sorted(unknown_params))}")
         unsupported_shortcuts = {key for key, value in shortcut_values.items() if value is not None and key not in spec.fields}
@@ -344,7 +377,8 @@ def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace
         values.update({key: value for key, value in shortcut_values.items() if value is not None})
     else:
         values.update({key: value for key, value in shortcut_values.items() if key in spec.fields and value is not None})
-    values["prompt"] = prompt
+    if prompt is not None:
+        values["prompt"] = prompt
     _apply_media(client, spec.id, values, args, spec)
     if args.wait:
         validate_wait_options(args.wait_timeout, args.wait_interval)
@@ -408,8 +442,56 @@ def _update_preferences(args: argparse.Namespace, store: PreferencesStore) -> Pr
 
 
 def main(argv: list[str] | None = None) -> int:
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     parser = build_parser(); args = parser.parse_args(argv)
     try:
+        if args.command == "project":
+            from .project_cli import dispatch
+            result = dispatch(args)
+            _print(result, args.json)
+            return 1 if result.get("state") in {"needs_recovery", "needs_changes", "asset_changed"} else 0
+        if args.command == "doctor":
+            from .inspection import doctor
+            _print(doctor(), args.json)
+            return 0
+        if args.command == "catalog":
+            from .inspection import audit_catalog
+            _print(audit_catalog(DocsCatalog(), kind=args.kind, limit=args.limit, refresh=args.refresh), args.json)
+            return 0
+        if args.command == "chat":
+            from .language import complete
+            spec = _resolve_model(args.model)
+            values = json.loads(Path(args.input_file).read_text(encoding="utf-8")) if args.input_file else {}
+            if not isinstance(values, dict):
+                raise ValueError("Language input file must contain a JSON object")
+            values.update(parse_key_values(args.param))
+            if args.prompt:
+                target = "input" if spec.family == "responses" else ("contents" if spec.family == "gemini" else "messages")
+                if target in values:
+                    raise ValueError(f"Use either prompt or explicit {target}, not both")
+                if target == "input":
+                    values[target] = args.prompt
+                elif target == "contents":
+                    values[target] = [{"role": "user", "parts": [{"text": args.prompt}]}]
+                else:
+                    values[target] = [{"role": "user", "content": args.prompt}]
+            if "stream" in spec.fields:
+                values["stream"] = args.stream
+            # Complete static validation before reading credentials/submitting.
+            prepare_model_input(spec, values)
+            client = KieClient(_load_env_key(args.env_file) or "")
+            result = complete(client, spec, values,
+                on_event=(lambda event: print(json.dumps({"event": event}, ensure_ascii=False))) if args.stream else None)
+            _safe_history_append(HistoryStore(), {"model": spec.id, "family": spec.family,
+                "state": "completed", "response_id": result.get("id"), "usage": result.get("usage"),
+                "credits_consumed": result.get("credits_consumed")})
+            if args.stream:
+                print(json.dumps({"result": result}, ensure_ascii=False))
+            else:
+                _print(result, args.json)
+            return 0
         if args.command == "models":
             rows = _live_model_rows(args.search, args.kind, args.refresh) if (args.live or args.search or args.refresh) else _model_rows(args.kind)
             _print(rows, args.json)

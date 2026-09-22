@@ -1,3 +1,4 @@
+import os
 import stat
 import tempfile
 import unittest
@@ -31,7 +32,8 @@ class PreferencesTests(unittest.TestCase):
             actual = store.load()
             mode = stat.S_IMODE(path.stat().st_mode)
         self.assertEqual(actual, expected)
-        self.assertEqual(mode, 0o600)
+        if os.name != "nt":
+            self.assertEqual(mode, 0o600)
 
     def test_invalid_preferences_are_rejected(self):
         with self.assertRaises(PreferencesError):

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.0] - 2026-09-22
+
+- Native Windows locks, atomic state, UTF-8 CLI output and three-platform CI.
+- Dynamic task/audio/promptless and nested/alternative input schemas; explicit catalog coverage audit.
+- KIE Chat Completions, Responses, Claude Messages and Gemini transports with streaming and no automatic paid retry.
+- Editable scene projects, targeted invalidation, entity library, per-stage receipts/reviews and known-task resume.
+- KIE narration/music stages, local FFmpeg montage, scene captions, technical media checks and imported assets.
+- Project dossiers, checksum-verified ZIP handoff and five demonstration recipes.
+- No claim of complete live provider validation, guaranteed credit ceilings, automatic visual QA or native 3D.
+
 All notable changes are documented here. The format follows Keep a Changelog and versions follow Semantic Versioning.
 
 ## [Unreleased]

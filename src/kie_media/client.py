@@ -64,6 +64,7 @@ class TaskResult:
     fail_code: str = ""
     fail_message: str = ""
     raw: dict[str, Any] = field(default_factory=dict)
+    output: Any = None
 
 
 def _urls_from(value: Any) -> list[str]:
@@ -75,7 +76,8 @@ def _urls_from(value: Any) -> list[str]:
             urls.extend(_urls_from(item))
     elif isinstance(value, dict):
         for key, item in value.items():
-            if key.lower() in {"resulturls", "result_urls", "urls", "images", "imageurls", "videourls", "audiourls", "url", "downloadurl", "firstframeurl", "lastframeurl"}:
+            if key.lower() in {"resulturls", "result_urls", "urls", "images", "imageurls", "videourls", "audiourls", "url", "downloadurl", "firstframeurl", "lastframeurl",
+                               "audio_url", "audiourl", "video_url", "videourl", "image_url", "imageurl", "outputs", "response", "sunodata", "data"}:
                 urls.extend(_urls_from(item))
     return list(dict.fromkeys(urls))
 
@@ -100,6 +102,7 @@ def parse_result(payload: dict[str, Any]) -> TaskResult:
         fail_code=str(data.get("failCode") or data.get("fail_code") or ""),
         fail_message=str(data.get("failMsg") or data.get("fail_message") or ""),
         raw=payload,
+        output=parsed or data.get("result"),
     )
 
 

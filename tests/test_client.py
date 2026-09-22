@@ -1,3 +1,4 @@
+import os
 import json
 import stat
 import tempfile
@@ -150,7 +151,8 @@ class ClientTests(unittest.TestCase):
             paths = client.download_urls(["https://cdn.example/result"], Path(td), task_id="task1")
             self.assertEqual(Path(paths[0]).suffix, ".mp4")
             self.assertEqual(Path(paths[0]).read_bytes(), media)
-            self.assertEqual(stat.S_IMODE(Path(paths[0]).stat().st_mode), 0o600)
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE(Path(paths[0]).stat().st_mode), 0o600)
 
     def test_download_rejects_html_and_empty_media(self):
         for content, headers in [

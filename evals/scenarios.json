@@ -161,7 +161,7 @@
   },
   {
     "name": "German Pinterest product route",
-    "brief": "Erstelle drei Pinterest Pins für diese Kerze",
+    "brief": "Erstelle drei Pinterest Pins f\u00fcr diese Kerze",
     "options": {
       "media": [
         "kerze.jpg"
@@ -243,6 +243,24 @@
       "status": "ready",
       "estimated_jobs": 2,
       "estimated_credits": 8.0
+    }
+  },
+  {
+    "name": "multi scene storyboard must not become one paid photo",
+    "brief": "Plan a three-scene product launch spot with narration, music, storyboard and final edit",
+    "options": {
+      "media": [
+        "product.png"
+      ]
+    },
+    "expected": {
+      "workflow": "video-explainer",
+      "status": "hybrid",
+      "estimated_jobs": 0,
+      "executable": false,
+      "capability_gaps_contains": [
+        "use_project_workflow"
+      ]
     }
   }
 ]
