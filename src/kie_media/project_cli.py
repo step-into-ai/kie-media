@@ -58,6 +58,18 @@ def add_parser(sub):
     export = commands.add_parser("export")
     export.add_argument("path", type=Path)
     export.add_argument("output", type=Path)
+    directions = commands.add_parser("directions", help="Create three editable visual directions without generation")
+    directions.add_argument("path", type=Path)
+    directions.add_argument("--output-dir", required=True, type=Path)
+    compare = commands.add_parser("compare", help="Write an interactive direction comparison with scene choices")
+    compare.add_argument("path", type=Path, help="directions.json")
+    compose = commands.add_parser("compose", help="Combine chosen scenes into a new project")
+    compose.add_argument("path", type=Path, help="directions.json")
+    selection = compose.add_mutually_exclusive_group(required=True)
+    selection.add_argument("--pick", action="append", help="SCENE=DIRECTION; repeat once per scene")
+    selection.add_argument("--selection-file", type=Path)
+    compose.add_argument("--output", type=Path, required=True)
+    compose.add_argument("--dry-run", action="store_true")
     for command in commands.choices.values():
         command.add_argument("--json", action="store_true")
 
@@ -65,6 +77,27 @@ def add_parser(sub):
 def dispatch(args):
     from . import projects
     name = args.project_command
+    if name in {"directions", "compare", "compose"}:
+        from .directions import create_directions, compare_directions, compose_directions
+        if name == "directions":
+            return create_directions(args.path, args.output_dir)
+        if name == "compare":
+            return compare_directions(args.path)
+        import json
+        if args.selection_file:
+            selection = json.loads(args.selection_file.read_text(encoding="utf-8"))
+            collection = json.loads(args.path.read_text(encoding="utf-8"))
+            if not isinstance(selection, dict) or selection.get("collection_id") != collection.get("id"):
+                raise ValueError("Selection file belongs to a different directions collection")
+            picks = selection.get("picks")
+        else:
+            picks = {}
+            for value in args.pick:
+                scene, separator, direction = value.partition("=")
+                if not separator or not scene or not direction or scene in picks:
+                    raise ValueError("Each --pick must be a unique SCENE=DIRECTION")
+                picks[scene] = direction
+        return compose_directions(args.path, picks, args.output, dry_run=args.dry_run)
     if name == "init":
         return projects.create_project(args.path, args.brief, shots=args.shots, aspect_ratio=args.aspect_ratio,
                                        image_model=args.image_model, video_model=args.video_model)

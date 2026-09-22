@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kie-media"
-version = "0.4.0"
+version = "0.5.0"
 description = "Portable KIE.ai media agent with live models, safe image/video workflows, campaigns, and resumable execution"
 readme = "README.md"
 requires-python = ">=3.11"

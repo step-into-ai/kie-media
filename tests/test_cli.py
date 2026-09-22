@@ -33,7 +33,7 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             build_parser().parse_args(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), "kie-media 0.4.0")
+        self.assertEqual(output.getvalue().strip(), "kie-media 0.5.0")
 
     def test_generate_command_matches_agent_friendly_shape(self):
         args = build_parser().parse_args(["generate", "image-fast", "--prompt", "hello", "--wait"])

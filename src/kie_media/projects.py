@@ -515,11 +515,15 @@ def production_report(path: Path) -> dict:
     project = _read(path)
     costs = [j.get("credits_consumed") for j in project["jobs"]]
     known = [c for c in costs if isinstance(c, (float, int)) and not isinstance(c, bool) and math.isfinite(c)]
+    inherited = [j["credits_consumed"] for j in project["jobs"] if j.get("reused_from")
+                 and isinstance(j.get("credits_consumed"), (int, float)) and not isinstance(j["credits_consumed"], bool)
+                 and math.isfinite(j["credits_consumed"])]
     return {**_plan(project, path.parent), "recorded_jobs": len(project["jobs"]),
             "known_credits_consumed": sum(known), "jobs_without_cost_observation": len(costs) - len(known),
+            "inherited_credits_consumed": sum(inherited), "new_credits_consumed": sum(known) - sum(inherited),
             "costs_complete": len(known) == len(costs), "changes": project["changes"],
             "jobs": project["jobs"], "renders": project.get("renders", {}),
-            "note": "Technical checks and recorded reviews are evidence, not a guarantee of visual identity."}
+            "note": "Known costs include original costs of reused receipts; reuse is not new spend. Technical checks and recorded reviews do not guarantee visual identity."}
 
 
 def export_project(path: Path, output: Path) -> dict:

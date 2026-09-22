@@ -1,7 +1,7 @@
 ---
 name: kie-media
 description: "Use for KIE.ai image, video, audio and language-model requests, editable scene productions, product visuals, campaigns and selective scene changes."
-version: 1.2.0
+version: 1.3.0
 author: Olymp
 license: MIT
 compatibility: Requires the kie-media CLI; planning needs Python 3.11+, execution needs network access and KIE_API_KEY.
@@ -18,6 +18,8 @@ For a complete film, narrated explainer, storyboard, existing-clip montage or sc
 
 For current operation coverage use `kie-media catalog audit --json`; for local runtime and renderer availability use `kie-media doctor --json`. Read `references/operations.md` for audio, promptless transformations and language-model requests.
 
+For alternative visual directions or mixing the best scene from each version, read `references/directions.md`. Use `project directions`, `project compare`, and `project compose --dry-run`. Plan the image-preview count before spending and produce only the selected winner's missing stages.
+
 ## Runtime and entry points
 
 ```bash
@@ -31,7 +33,7 @@ Add repeated `--media <image-path>`, `--reference-video <path>`, `--reference-au
 
 ## Operating flow
 
-1. Run `agent plan` first for every non-trivial request.
+1. For scene projects or creative directions, use the project planning flow in the linked references. For non-trivial legacy single-asset/campaign requests, run `agent plan` first.
 2. Read `workflow`, `tier`, `status`, `missing_inputs`, `capability_gaps`, `estimated_jobs`, `estimated_credits`, `credit_estimate_basis`, and the ordered stages.
 3. If `needs_input`, ask only for the listed blocker. Do not start a generic substitute.
 4. If `hybrid`, explain the exact missing primitive and use another installed tool only when it can honestly supply it.
@@ -121,3 +123,4 @@ Load when needed:
 - `references/cookbook.md` — executable recipes
 - `references/projects.md` — scene projects, audio, montage, selective changes, review and handoff
 - `references/operations.md` — dynamic schemas, audio/transform operations and KIE language transports
+- `references/directions.md` — three creative directions, visual comparison and selective composition

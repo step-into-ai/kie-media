@@ -1,5 +1,17 @@
 # KIE Media
 
+## Three directions, one film (0.5)
+
+Compare calm, playful and dramatic treatments of one scene project, then choose one direction per scene. Planning and selection make no API requests. Image previews are generated explicitly with the existing job caps; there is no need to animate every alternative.
+
+```bash
+kie-media project directions ./spot/project.json --output-dir ./ideas --json
+kie-media project compare ./ideas/directions.json --json
+kie-media project compose ./ideas/directions.json --pick scene-1=calm --pick scene-2=playful --pick scene-3=dramatic --output ./winner/project.json --dry-run --json
+```
+
+The comparison page can export a `selection.json`. Composing the winner copies verified assets and preserves task IDs, reviews and provenance. Its dry run lists only missing jobs. Inherited costs are reported separately from new spend. The original and alternative projects remain editable. See the [directions workflow](skills/kie-media/references/directions.md).
+
 ## Editable production projects (0.4)
 
 KIE Media now runs natively on Windows as well as POSIX hosts. The new scene-project workflow connects images, reviewed animation, KIE speech/music, local montage, targeted scene edits and portable project handoff. Language requests use documented KIE Chat Completions, Responses, Claude Messages and Gemini transports.
