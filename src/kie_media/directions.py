@@ -4,11 +4,13 @@ from __future__ import annotations
 import copy
 import html
 import json
+import os
 import shutil
 import tempfile
 import uuid
 from contextlib import ExitStack
 from pathlib import Path
+from urllib.parse import quote
 
 from .agent import manifest_lock
 from .projects import _read, _stages, _receipt, _plan, _validate, _now, file_hash
@@ -262,7 +264,8 @@ def compare_directions(collection_path: Path) -> dict:
                     if job and job["state"] == "success" and job.get("artifacts"):
                         ref = job["artifacts"][0]
                         _asset(members[name].parent, ref, None)
-                        url = html.escape((members[name].parent / ref["path"]).resolve().as_uri(), quote=True)
+                        relative = os.path.relpath((members[name].parent / ref["path"]).resolve(), collection_path.parent)
+                        url = html.escape(quote(Path(relative).as_posix(), safe="/"), quote=True)
                         media = f'<img src="{url}" alt="{html.escape(label, quote=True)} preview">' if kind == "image" else f'<video controls src="{url}"></video>'
                         state = "Review: " + job.get("review", {}).get("decision", "not recorded")
                         break

@@ -122,6 +122,39 @@ class DirectionTests(unittest.TestCase):
             self.create()
         self.assertEqual(self.collection.read_bytes(), before)
 
+    def test_comparison_media_urls_are_relative_and_url_encoded(self):
+        from html.parser import HTMLParser
+        from urllib.parse import unquote, urlsplit
+
+        self.create()
+        path = self.member("calm")
+
+        def runner(stage, checkpoint):
+            checkpoint(stage["id"])
+            output = path.parent / (stage["id"] + " ü #%.png")
+            output.write_bytes(b"fixture")
+            return {"state": "success", "task_id": stage["id"], "files": [str(output)]}
+
+        run_project(path, phase="images", max_jobs=3, runner=runner)
+        urls = []
+
+        class MediaParser(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag in {"img", "video"}:
+                    urls.append(dict(attrs)["src"])
+
+        comparison = Path(compare_directions(self.collection)["file"])
+        MediaParser().feed(comparison.read_text(encoding="utf-8"))
+        self.assertEqual(len(urls), 3)
+        for url in urls:
+            parts = urlsplit(url)
+            self.assertEqual(parts.scheme, "")
+            self.assertEqual(parts.netloc, "")
+            self.assertEqual(parts.fragment, "")
+            self.assertEqual(parts.query, "")
+            self.assertFalse(parts.path.startswith("/"))
+            self.assertTrue((comparison.parent / unquote(parts.path)).is_file())
+
     def test_soundtrack_with_different_timeline_length_is_not_reused(self):
         configure_project(self.source, music_prompt="Gentle piano")
         self.create()
