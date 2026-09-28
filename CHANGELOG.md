@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.5.0] - 2026-09-22
+
+- Three editable visual directions from one scene brief, with no automatic API calls.
+- HTML scene comparison and collection-scoped selection files.
+- Selective composition into independent winner projects, preserving verified media, provider task IDs, reviews and provenance.
+- Dry-run missing-job accounting; explicit blocking of active jobs, rejected/changed assets and conflicting settings/references.
+- Narration reuse, duration-aware soundtrack reuse and inherited-versus-new cost reporting.
+
 ## [0.4.0] - 2026-09-22
 
 - Native Windows locks, atomic state, UTF-8 CLI output and three-platform CI.

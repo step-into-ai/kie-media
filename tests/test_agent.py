@@ -12,6 +12,12 @@ from kie_media.agent import (
 
 
 class AgentPlanningTests(unittest.TestCase):
+    def test_creative_directions_do_not_fall_back_to_one_paid_image(self):
+        plan = build_plan("Drei Regisseure: drei Stilrichtungen fuer meinen Produktspot", media=["product.png"])
+        self.assertFalse(plan.executable)
+        self.assertEqual(plan.estimated_jobs, 0)
+        self.assertIn("project directions", plan.route_reason)
+
     def test_storyboard_spot_cannot_fall_back_to_one_product_image(self):
         plan = build_plan("Plan a three-scene 9:16 product launch spot with narration, music, storyboard and final edit", media=["product.png"])
         self.assertEqual(plan.status, "hybrid")

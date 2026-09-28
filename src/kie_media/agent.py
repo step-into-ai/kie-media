@@ -119,6 +119,8 @@ def _has_word(text: str, terms: tuple[str, ...]) -> bool:
 
 def _route(brief: str) -> tuple[str, str]:
     text = brief.casefold()
+    if _has(text, ("creative directions", "three directors", "drei regisseure", "stilrichtungen")):
+        return "video-explainer", "creative alternatives: use kie-media project directions, compare and compose"
     if _has(text, ("storyboard", "multi-scene", "three-scene", "3-scene", "drei szenen", "mehrere szenen", "montage", "final edit", "final cut")):
         return "video-explainer", "scene project: use kie-media project init, then project plan/run"
     if _has(text, ("marketplace", "amazon", "listing", "a+", "produktkarte", "product card")):

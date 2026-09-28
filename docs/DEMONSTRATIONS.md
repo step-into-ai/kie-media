@@ -1,5 +1,9 @@
 # Fünf Videos, die echte Funktionen zeigen
 
+## Neue Folge ab 0.5: „Drei KI-Regisseure, ein Gewinner“
+
+Aus demselben Szenenprojekt werden drei editierbare Stilrichtungen angelegt: ruhig, verspielt, dramatisch. Zunächst nur die Bildvorschauen erzeugen. In der Vergleichsseite pro Szene eine Richtung wählen, die Auswahl exportieren und mit `project compose --dry-run` den Aufwand für den Gewinner ansehen. Erst dessen fehlende Stufen produzieren. Task-IDs und Prüfsummen belegen die Wiederverwendung. Die drei Richtungen sind editierbare Regie-Briefs, keine automatisch gestarteten separaten KI-Agenten.
+
 Diese Rezepte sind Aufnahmeideen, keine Behauptung bereits produzierter KIE-Ergebnisse. Vor einer Veröffentlichung die verwendeten Modelle und Resultate live prüfen. Lokale Testclips beweisen Schnitt und Wiederaufnahme, nicht die Qualität eines generativen Modells.
 
 ## 1. „Ich ändere nur Szene 2 – der Rest bleibt erhalten“
