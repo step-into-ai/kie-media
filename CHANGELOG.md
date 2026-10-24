@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.0] - 2026-10-24
+
+- Source-video `recast` planning/execution for Kling 3 motion transfer, Wan 2.7 reference-guided editing and Kling 3 Omni restyling.
+- Provider media constraints checked with FFprobe before upload, including duration, dimensions, ratio, frame rate, file size and reference format.
+- Content-fingerprinted takes, atomic task receipts, known-task resume, explicit ambiguous-task recovery and changed-file detection.
+- Local source/output comparison and hash-bound acceptance/rejection; Wan original-audio retention when requested.
+- Grok Imagine 1.5 pinned first/last/middle frames and loops, and Kling 4 reference recreation with nested material validation.
+- Agent routing, canonical skill/plugin references and a dated official-source update assessment.
+- Offline and local-media validation only; no paid generation or claim of Higgsfield output parity.
+
 ## [0.5.0] - 2026-09-22
 
 - Three editable visual directions from one scene brief, with no automatic API calls.

@@ -1,5 +1,7 @@
 # Higgsfield parity and intentional gaps
 
+Implementation update 2026-10-24 (0.6): source-video recast (Kling motion control, Wan video edit, Kling Omni transformation), Grok 1.5 pinned frames/loops and Kling 4 reference recreation are now wired. Source/media preflight, atomic paid-task receipts, recovery, source/output comparison and hash-bound review are implemented and tested offline. Wan can retain source audio with its documented `origin` setting. This does not establish Genjutsu output parity; no paid generations were run for the update. See [recast](recast.md), [keyframes](keyframes.md) and the repository's dated update research.
+
 July baseline: public `higgsfield-ai/skills` (seven skills, MIT). September 2026 has nine skills, adding brandkit and YouTube thumbnails. CLI tables add GPT Image 2.5 and Seedance 2.5; website features are not assumed to be CLI features.
 
 Implemented/adapted:

@@ -161,7 +161,7 @@
   },
   {
     "name": "German Pinterest product route",
-    "brief": "Erstelle drei Pinterest Pins f\u00fcr diese Kerze",
+    "brief": "Erstelle drei Pinterest Pins für diese Kerze",
     "options": {
       "media": [
         "kerze.jpg"
@@ -260,6 +260,45 @@
       "executable": false,
       "capability_gaps_contains": [
         "use_project_workflow"
+      ]
+    }
+  },
+  {
+    "name": "source video motion transfer",
+    "brief": "Transfer motion from this clip to my reference character",
+    "options": {},
+    "expected": {
+      "workflow": "recast",
+      "status": "hybrid",
+      "estimated_jobs": 0,
+      "capability_gaps_contains": [
+        "use_recast_workflow"
+      ]
+    }
+  },
+  {
+    "name": "existing clip object swap",
+    "brief": "Replace the jacket in this video with my product",
+    "options": {},
+    "expected": {
+      "workflow": "recast",
+      "status": "hybrid",
+      "estimated_jobs": 0,
+      "capability_gaps_contains": [
+        "use_recast_workflow"
+      ]
+    }
+  },
+  {
+    "name": "source video restyle",
+    "brief": "Restyle this video as a watercolor animation",
+    "options": {},
+    "expected": {
+      "workflow": "recast",
+      "status": "hybrid",
+      "estimated_jobs": 0,
+      "capability_gaps_contains": [
+        "use_recast_workflow"
       ]
     }
   }
