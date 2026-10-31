@@ -3,8 +3,25 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 from kie_media.media import assemble_timeline, probe
+
+
+class MediaProbeMetadataTests(unittest.TestCase):
+    def test_probe_exposes_frame_rate_and_alpha_for_provider_constraints(self):
+        import json
+        with tempfile.TemporaryDirectory() as td:
+            media = Path(td) / "input.png"
+            media.write_bytes(b"probe fixture")
+            response = Mock(returncode=0, stdout=json.dumps({
+                "format": {"format_name": "png_pipe"},
+                "streams": [{"codec_type": "video", "width": 720, "height": 720,
+                             "avg_frame_rate": "30000/1001", "pix_fmt": "rgba"}]}))
+            with patch("kie_media.media._tool", return_value="ffprobe"), patch("kie_media.media.subprocess.run", return_value=response):
+                info = probe(media)
+            self.assertAlmostEqual(info["fps"], 29.97002997)
+            self.assertTrue(info["has_alpha"])
 
 
 @unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "FFmpeg/ffprobe required")

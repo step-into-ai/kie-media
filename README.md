@@ -1,5 +1,43 @@
 # KIE Media
 
+## Source-video recasting and pinned frames (0.6)
+
+Transform an existing clip with three documented KIE engines: character motion
+transfer, reference-guided object replacement and prompt-led restyling. The new
+`recast` workflow checks source/reference media locally, saves the exact plan,
+submits one bounded job, resumes known tasks and creates a source/output review
+page. Input/output hashes and explicit review decisions stay with the receipt.
+
+```bash
+kie-media recast capabilities --json
+kie-media recast plan "Use this character for the source performance; preserve camera and timing" --video ./motion.mp4 --reference-image ./character.png --save ./work/recast-plan.json --json
+kie-media recast run ./work/recast-plan.json --max-jobs 1 --json
+kie-media video "A gradual product reveal" --model video-grok-1-5 --duration 8 --start-image ./start.png --keyframe 3=./middle.png --end-image ./end.png --json
+```
+
+Grok Imagine 1.5 now has first/last frames, up to four timed middle frames and
+loops. Kling 4.0 reference recreation supports image/video references, named
+elements and voices. Both models have curated offline validation and the
+existing typed upload/wait/download workflow.
+
+This adapts Genjutsu-like outcomes to KIE's public APIs; output quality and
+preservation require review. Provider contracts and offline behavior are tested;
+paid generations were not run for this release. See [recast](skills/kie-media/references/recast.md),
+[keyframes](skills/kie-media/references/keyframes.md), and the dated
+[update research](docs/UPDATE_RESEARCH_2026-10-24.md) for capabilities and limits.
+
+## Three directions, one film (0.5)
+
+Compare calm, playful and dramatic treatments of one scene project, then choose one direction per scene. Planning and selection make no API requests. Image previews are generated explicitly with the existing job caps; there is no need to animate every alternative.
+
+```bash
+kie-media project directions ./spot/project.json --output-dir ./ideas --json
+kie-media project compare ./ideas/directions.json --json
+kie-media project compose ./ideas/directions.json --pick scene-1=calm --pick scene-2=playful --pick scene-3=dramatic --output ./winner/project.json --dry-run --json
+```
+
+The comparison page can export a `selection.json`. Composing the winner copies verified assets and preserves task IDs, reviews and provenance. Its dry run lists only missing jobs. Inherited costs are reported separately from new spend. The original and alternative projects remain editable. See the [directions workflow](skills/kie-media/references/directions.md).
+
 ## Editable production projects (0.4)
 
 KIE Media now runs natively on Windows as well as POSIX hosts. The new scene-project workflow connects images, reviewed animation, KIE speech/music, local montage, targeted scene edits and portable project handoff. Language requests use documented KIE Chat Completions, Responses, Claude Messages and Gemini transports.
@@ -54,6 +92,8 @@ The project adapts useful workflow ideas from Higgsfield's public MIT-licensed s
 | Single images | Posters, editorial visuals, product heroes, typography-led designs, reference edits, and social assets |
 | Single videos | Text-to-video and multimodal clips with duration, aspect ratio, resolution, image, video, and audio references |
 | Image-to-video | Animates an existing still with motion-focused prompting and validated start-frame handling |
+| Source-video recast | Transfers character motion, guides object/wardrobe edits or restyles existing footage with local validation, receipts and review |
+| Pinned frames and loops | Grok 1.5 first/last/middle frames and loop images; Kling 4 reference recreation with typed nested materials |
 | Product photoshoots | Produces coordinated studio, lifestyle, hero, detail, scale, flat-lay, packaging, and moodboard variants |
 | Marketplace sets | Plans main images, supporting product images, A+ content, or a complete listing bundle |
 | Campaigns | Generates several still candidates, pauses for visual review, then animates only the selected winner |
@@ -239,6 +279,8 @@ Existing matching manifests skip completed stages. Ambiguous interrupted stages 
 - `video-kling-fast` → Kling 3 Turbo text-to-video
 - `video-kling-image` → Kling 3 Turbo image-to-video
 - `video-bold` → Grok Imagine Video
+- `video-grok-1-5` → Grok Imagine Video 1.5 Preview with pinned frames and loops
+- `video-kling-reference` → Kling 4.0 Reference To Video
 
 Curated aliases are the verified offline fallback, not the catalog ceiling. Use `kie-media model "<natural model name>" --json` for live resolution and validated parameters. A current exact KIE model ID can still be used with `kie-media generate <model-id> --param key=value`; an undocumented passthrough receives only generic prompt validation.
 

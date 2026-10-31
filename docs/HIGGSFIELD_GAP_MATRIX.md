@@ -1,5 +1,7 @@
 # Higgsfield → KIE agent gap matrix
 
+Implementation update 2026-10-24 (0.6): source-video recast (Kling motion control, Wan video edit, Kling Omni transformation), Grok 1.5 pinned frames/loops and Kling 4 reference recreation are now wired. Source/media preflight, atomic paid-task receipts, recovery, source/output comparison and hash-bound review are implemented and tested offline. Wan can retain source audio with its documented `origin` setting. This does not establish Genjutsu output parity; no paid generations were run for the update. See [recast](../skills/kie-media/references/recast.md), [keyframes](../skills/kie-media/references/keyframes.md) and the repository's dated update research.
+
 Implementation update 2026-09-22 (0.4): native Windows runtime; task/audio and language transports; editable scene projects, KIE narration/music, FFmpeg assembly, scene-aligned captions, selective edits and portable handoff. These are implemented adapters with offline tests, not claims of paid live parity. Identity training, native 3D and autonomous visual QA remain unavailable. The table below preserves the original July comparison; the legacy explainer route is superseded by `project`.
 
 Baseline inspected 2026-07-29:

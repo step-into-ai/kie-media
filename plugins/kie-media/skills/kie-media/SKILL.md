@@ -1,11 +1,11 @@
 ---
 name: kie-media
-description: "Use for KIE.ai image, video, audio and language-model requests, editable scene productions, product visuals, campaigns and selective scene changes."
-version: 1.2.0
-author: Olymp
+description: "Use for KIE.ai image, video, audio and language-model requests, source-video recasting, motion transfer, object replacement, keyframe animation, editable scene productions and campaigns."
 license: MIT
-compatibility: Requires the kie-media CLI; planning needs Python 3.11+, execution needs network access and KIE_API_KEY.
 metadata:
+  version: "1.4.0"
+  author: Olymp
+  compatibility: Requires the kie-media CLI; planning needs Python 3.11+, execution needs network access and KIE_API_KEY.
   hermes:
     tags: [kie, image-generation, video-generation, agents, product-photography, marketplace]
 ---
@@ -17,6 +17,10 @@ Use the `kie-media` CLI as the stable execution backend and this skill as the or
 For a complete film, narrated explainer, storyboard, existing-clip montage or scene edit, read `references/projects.md` and use `kie-media project`. That workflow includes an entity library, per-scene image/video/voice stages, optional music, recorded reviews, local assembly, impact previews and portable handoff. The legacy `agent` routes below remain useful for individual assets and candidate campaigns.
 
 For current operation coverage use `kie-media catalog audit --json`; for local runtime and renderer availability use `kie-media doctor --json`. Read `references/operations.md` for audio, promptless transformations and language-model requests.
+
+For alternative visual directions or mixing the best scene from each version, read `references/directions.md`. Use `project directions`, `project compare`, and `project compose --dry-run`. Plan the image-preview count before spending and produce only the selected winner's missing stages.
+
+For Genjutsu-like source-video changes, motion transfer, object replacement or clip restyling, read `references/recast.md` and use `recast plan/run`. Keep the source, requested changes and preservation constraints explicit. For Grok 1.5 pinned frames, loops or Kling 4 reference recreation, read `references/keyframes.md`. Preserve a user-named model through the direct model commands when it differs from recast's documented engines.
 
 ## Runtime and entry points
 
@@ -31,7 +35,7 @@ Add repeated `--media <image-path>`, `--reference-video <path>`, `--reference-au
 
 ## Operating flow
 
-1. Run `agent plan` first for every non-trivial request.
+1. For scene projects or creative directions, use the project planning flow in the linked references. For non-trivial legacy single-asset/campaign requests, run `agent plan` first.
 2. Read `workflow`, `tier`, `status`, `missing_inputs`, `capability_gaps`, `estimated_jobs`, `estimated_credits`, `credit_estimate_basis`, and the ordered stages.
 3. If `needs_input`, ask only for the listed blocker. Do not start a generic substitute.
 4. If `hybrid`, explain the exact missing primitive and use another installed tool only when it can honestly supply it.
@@ -65,6 +69,8 @@ If the user names a model, pass that name through `--image-model` or `--video-mo
 - listing/A+ image set → `marketplace-cards`
 - multi-asset creative → `campaign` with a review gate
 - narrated explainer or multi-scene film → `project` workflow in `references/projects.md`
+- existing-video motion transfer, subject/product replacement or restyle → `recast` workflow in `references/recast.md`
+- first/middle/last frame animation or loops → Grok 1.5 in `references/keyframes.md`
 
 Tier behavior:
 
@@ -121,3 +127,6 @@ Load when needed:
 - `references/cookbook.md` — executable recipes
 - `references/projects.md` — scene projects, audio, montage, selective changes, review and handoff
 - `references/operations.md` — dynamic schemas, audio/transform operations and KIE language transports
+- `references/directions.md` — three creative directions, visual comparison and selective composition
+- `references/recast.md` — source-video transformation, engine constraints, recovery and comparison
+- `references/keyframes.md` — Grok pinned frames/loops and Kling 4 reference recreation

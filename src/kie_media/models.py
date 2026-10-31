@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 import copy
 import math
 import json
+import re
 from typing import Any
 from jsonschema import Draft202012Validator
 
@@ -45,6 +46,75 @@ IMAGE_RATIOS = (
     "16:9", "9:16", "2:1", "1:2", "3:1", "1:3", "21:9", "9:21",
 )
 SEEDANCE_RATIOS = ("1:1", "4:3", "3:4", "16:9", "9:16", "21:9", "adaptive")
+GROK_15_RATIOS = ("1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3", "auto")
+
+
+def _grok_15_schema() -> dict[str, Any]:
+    """KIE contract published in its 2026-10-22 Grok 1.5 changelog entry."""
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["image_urls"],
+        "properties": {
+            "prompt": {"type": "string", "minLength": 1, "maxLength": 4096},
+            "image_urls": {"type": "array", "default": [], "maxItems": 1, "items": {"type": "string"}},
+            "first_frame_url": {"type": "string"},
+            "last_frame_url": {"type": "string"},
+            "keyframes": {
+                "type": "array", "maxItems": 4,
+                "items": {
+                    "type": "object",
+                    "required": ["url", "timestamp_s"],
+                    "properties": {"url": {"type": "string"}, "timestamp_s": {"type": "integer"}},
+                },
+            },
+            "loop_url": {"type": "string"},
+            "aspect_ratio": {"type": "string", "enum": list(GROK_15_RATIOS), "default": "16:9"},
+            "resolution": {"type": "string", "enum": ["480p", "720p", "1080p"], "default": "480p"},
+            "duration": {"type": "integer", "minimum": 1, "maximum": 15, "default": 8},
+            "enable_audio": {"type": "boolean"},
+            "nsfw_checker": {"type": "boolean"},
+        },
+    }
+
+
+def _kling_4_reference_schema() -> dict[str, Any]:
+    element_name = {"type": "string", "pattern": r"^[一-龥A-Za-z0-9_]{1,20}$"}
+    return {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["prompt"],
+        "properties": {
+            "prompt": {"type": "string", "minLength": 1, "maxLength": 8000},
+            "duration": {"type": "integer", "minimum": 3, "maximum": 30, "default": 5},
+            "resolution": {"type": "string", "enum": ["720p", "1080p"], "default": "720p"},
+            "aspect_ratio": {"type": "string", "enum": ["auto", "16:9", "9:16", "1:1", "21:9"]},
+            "image_urls": {"type": "array", "maxItems": 10, "items": {"type": "string"}},
+            "video_urls": {"type": "array", "maxItems": 5, "items": {"type": "string"}},
+            "keep_original_sound": {"type": "boolean", "default": False},
+            "elements": {
+                "type": "array", "maxItems": 7,
+                "items": {
+                    "type": "object", "additionalProperties": False, "required": ["name"],
+                    "properties": {
+                        "name": element_name,
+                        "image_urls": {"type": "array", "minItems": 2, "maxItems": 4, "items": {"type": "string"}},
+                        "video_url": {"type": "string"}, "voice_url": {"type": "string"},
+                        "tag": {"type": "string", "enum": ["character", "animal", "prop", "costume", "scene", "effect", "others"]},
+                        "description": {"type": "string", "maxLength": 100},
+                    },
+                },
+            },
+            "voices": {
+                "type": "array", "maxItems": 3,
+                "items": {
+                    "type": "object", "additionalProperties": False,
+                    "required": ["name", "audio_url"],
+                    "properties": {"name": element_name, "audio_url": {"type": "string"}},
+                },
+            },
+        },
+    }
 
 
 def _prompt(required: bool = True, max_length: int = 20_000) -> FieldSpec:
@@ -159,6 +229,43 @@ _MODELS = (
         },
         docs="https://docs.kie.ai/market/grok-imagine/text-to-video",
     ),
+    # KIE announced these pinned-frame fields on 2026-10-22. Its generated
+    # docs example has not yet caught up; retain the release source here.
+    ModelSpec(
+        id="grok-imagine-video-1-5-preview", name="Grok Imagine Video 1.5 Preview", kind="video",
+        description="Grok 1.5 video with first, last, mid-video and loop frame controls.",
+        aliases=("grok-imagine-1-5", "video-grok-1-5"),
+        fields={
+            "prompt": FieldSpec(str, max_length=4_096),
+            "image_urls": FieldSpec(list, default=[], max_items=1),
+            "first_frame_url": FieldSpec(str), "last_frame_url": FieldSpec(str),
+            "keyframes": FieldSpec(list, max_items=4), "loop_url": FieldSpec(str),
+            "aspect_ratio": FieldSpec(str, default="16:9", enum=GROK_15_RATIOS),
+            "resolution": FieldSpec(str, default="480p", enum=("480p", "720p", "1080p")),
+            "duration": FieldSpec(int, default=8, minimum=1, maximum=15),
+            "enable_audio": FieldSpec(bool), "nsfw_checker": FieldSpec(bool),
+        },
+        docs="https://docs.kie.ai/market/grok-imagine/1-5-preview",
+        input_schema=_grok_15_schema(),
+    ),
+    ModelSpec(
+        id="kling-4.0/reference-to-video", name="Kling 4.0 Reference To Video", kind="video",
+        description="30-second text/video recreation with images, videos, named elements and voices.",
+        aliases=("video-kling-reference", "kling-4-reference"),
+        fields={
+            "prompt": FieldSpec(str, required=True, max_length=8_000),
+            "duration": FieldSpec(int, default=5, minimum=3, maximum=30),
+            "resolution": FieldSpec(str, default="720p", enum=("720p", "1080p")),
+            "aspect_ratio": FieldSpec(str, enum=("auto", "16:9", "9:16", "1:1", "21:9")),
+            "image_urls": FieldSpec(list, default=[], max_items=10),
+            "video_urls": FieldSpec(list, default=[], max_items=5),
+            "keep_original_sound": FieldSpec(bool, default=False),
+            "elements": FieldSpec(list, default=[], max_items=7),
+            "voices": FieldSpec(list, default=[], max_items=3),
+        },
+        docs="https://docs.kie.ai/market/kling/v4-reference-to-video",
+        input_schema=_kling_4_reference_schema(),
+    ),
 )
 
 _BY_NAME = {key: model for model in _MODELS for key in (model.id, *model.aliases)}
@@ -231,6 +338,54 @@ def _validate_cross_fields(model: ModelSpec, result: dict[str, Any]) -> None:
             raise ModelValidationError("Seedance frame mode and multimodal reference mode cannot be combined")
         if result.get("last_frame_url") and not result.get("first_frame_url"):
             raise ModelValidationError("Seedance last_frame_url requires first_frame_url")
+    if model.id == "grok-imagine-video-1-5-preview":
+        prompt = result.get("prompt")
+        frame_inputs = any(result.get(key) for key in ("first_frame_url", "last_frame_url", "keyframes", "loop_url"))
+        if prompt is not None and not str(prompt).strip():
+            raise ModelValidationError("Grok Imagine Video 1.5 prompt cannot be empty")
+        if not str(prompt or "").strip() and not frame_inputs:
+            raise ModelValidationError("Grok Imagine Video 1.5 requires a prompt or at least one pinned frame")
+        duration = result.get("duration")
+        keyframes = result.get("keyframes") or []
+        times: list[float] = []
+        for keyframe in keyframes:
+            timestamp = keyframe["timestamp_s"]
+            if isinstance(timestamp, bool) or not isinstance(timestamp, (int, float)) or not math.isfinite(timestamp):
+                raise ModelValidationError("Grok Imagine Video 1.5 keyframe timestamp_s must be a finite number")
+            if not 0 < timestamp < duration:
+                raise ModelValidationError("Grok Imagine Video 1.5 keyframe timestamp_s must be greater than 0 and less than duration")
+            times.append(float(timestamp))
+        for first, second in zip(sorted(times), sorted(times)[1:]):
+            if second - first < 1 / 3:
+                raise ModelValidationError("Grok Imagine Video 1.5 keyframes must be at least one third of a second apart")
+        if result.get("loop_url") and (result.get("first_frame_url") or result.get("last_frame_url")):
+            raise ModelValidationError("Grok Imagine Video 1.5 loop_url cannot be combined with a different first or last frame")
+    if model.id == "kling-4.0/reference-to-video":
+        image_urls = result.get("image_urls") or []
+        video_urls = result.get("video_urls") or []
+        elements = result.get("elements") or []
+        voices = result.get("voices") or []
+        video_elements = [element for element in elements if "video_url" in element]
+        if len(video_elements) > 3:
+            raise ModelValidationError("Kling 4.0 allows at most 3 video elements")
+        if len(video_urls) + len(video_elements) > 5:
+            raise ModelValidationError("Kling 4.0 allows at most 5 reference videos and video elements combined")
+        if len(image_urls) + len(video_urls) + len(elements) + len(voices) > 15:
+            raise ModelValidationError("Kling 4.0 allows at most 15 materials across images, videos, elements and voices")
+        names = [str(item["name"]) for item in [*elements, *voices]]
+        folded = [name.casefold() for name in names]
+        if len(folded) != len(set(folded)):
+            raise ModelValidationError("Kling 4.0 element and voice names must be unique case-insensitively")
+        reserved = re.compile(r"^(?:image|video|keyframe|object|audio)_\d+$|^(?:first|last)_frame$", re.IGNORECASE)
+        if any(reserved.fullmatch(name) for name in names):
+            raise ModelValidationError("Kling 4.0 element and voice names cannot use reserved material names")
+        for element in elements:
+            image_subject = bool(element.get("image_urls"))
+            video_subject = bool(element.get("video_url"))
+            if image_subject and video_subject:
+                raise ModelValidationError("Kling 4.0 elements cannot combine image_urls and video_url")
+            if element.get("voice_url") and image_subject and element.get("tag") not in (None, "character"):
+                raise ModelValidationError("Kling 4.0 image subjects with voice_url must be character-tagged")
 
 
 def prepare_model_input(model: ModelSpec, values: dict[str, Any]) -> dict[str, Any]:

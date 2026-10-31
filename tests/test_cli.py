@@ -33,13 +33,23 @@ class CliTests(unittest.TestCase):
         with contextlib.redirect_stdout(output), self.assertRaises(SystemExit) as raised:
             build_parser().parse_args(["--version"])
         self.assertEqual(raised.exception.code, 0)
-        self.assertEqual(output.getvalue().strip(), "kie-media 0.4.0")
+        from kie_media import __version__
+        self.assertEqual(output.getvalue().strip(), f"kie-media {__version__}")
 
     def test_generate_command_matches_agent_friendly_shape(self):
         args = build_parser().parse_args(["generate", "image-fast", "--prompt", "hello", "--wait"])
         self.assertEqual(args.command, "generate")
         self.assertEqual(args.model, "image-fast")
         self.assertTrue(args.wait)
+
+    def test_generate_accepts_timestamped_keyframe_and_loop_inputs(self):
+        args = build_parser().parse_args([
+            "generate", "grok-imagine-1-5", "--start-image", "first.png",
+            "--end-image", "last.png", "--keyframe", "2=middle.png",
+            "--loop-image", "loop.png",
+        ])
+        self.assertEqual(args.keyframe, [{"url": "middle.png", "timestamp_s": 2}])
+        self.assertEqual(args.loop_image, "loop.png")
 
     def test_image_and_video_shortcuts_exist(self):
         parser = build_parser()
@@ -82,6 +92,20 @@ class CliTests(unittest.TestCase):
             _apply_media(client, "gpt-image-2-text-to-image", {}, args)
         client.resolve_media.assert_not_called()
 
+    def test_grok_1_5_maps_pinned_frame_flags_without_resolving_media(self):
+        args = argparse.Namespace(
+            image=[], start_image="first.png", end_image="last.png", loop_image="loop.png",
+            keyframe=[{"url": "middle.png", "timestamp_s": 2}], reference_image=[], reference_video=[], reference_audio=[],
+        )
+        values = {}
+        client = Mock()
+        _apply_media(client, "grok-imagine-video-1-5-preview", values, args)
+        self.assertEqual(values, {
+            "first_frame_url": "first.png", "last_frame_url": "last.png", "loop_url": "loop.png",
+            "keyframes": [{"url": "middle.png", "timestamp_s": 2}],
+        })
+        client.resolve_media.assert_not_called()
+
     def test_param_media_fields_use_the_same_type_resolver(self):
         client = Mock()
         client.resolve_media.side_effect = lambda value, kind: f"https://resolved/{kind}"
@@ -89,6 +113,24 @@ class CliTests(unittest.TestCase):
         _resolve_media_params(client, values)
         self.assertEqual(values["image_urls"], ["https://resolved/image"])
         self.assertEqual(values["reference_audio_urls"], ["https://resolved/audio"])
+
+    def test_nested_kling_voice_url_is_resolved_as_audio_before_task_creation(self):
+        client = Mock()
+        client.resolve_media.side_effect = lambda value, kind: f"https://resolved/{kind}/{value}"
+        values = {"elements": [{"name": "Hero", "voice_url": "voice.mp3"}]}
+        _resolve_media_params(client, values)
+        self.assertEqual(values["elements"][0]["voice_url"], "https://resolved/audio/voice.mp3")
+        client.resolve_media.assert_called_once_with("voice.mp3", "audio")
+
+    @patch("kie_media.cli._load_env_key", return_value="key")
+    @patch("kie_media.cli.KieClient")
+    def test_grok_loop_without_prompt_validates_and_submits_one_provider_payload(self, client_class, _key):
+        client_class.return_value.resolve_media.return_value = "https://resolved/loop.png"
+        client_class.return_value.create_task.return_value = ("task-loop", {})
+        self.assertEqual(main(["generate", "grok-imagine-1-5", "--loop-image", "loop.png", "--no-wait", "--json"]), 0)
+        _, payload, _ = client_class.return_value.create_task.call_args.args
+        self.assertEqual(payload["loop_url"], "https://resolved/loop.png")
+        self.assertEqual(payload["image_urls"], [])
 
     @patch("kie_media.cli._load_env_key", return_value="key")
     @patch("kie_media.cli.KieClient")

@@ -14,7 +14,7 @@
   "properties": {
     "version": {"type": "string"},
     "workflow": {
-      "enum": ["image", "video", "image-to-video", "product-photoshoot", "marketplace-cards", "video-explainer", "campaign"]
+      "enum": ["image", "video", "image-to-video", "product-photoshoot", "marketplace-cards", "video-explainer", "campaign", "recast"]
     },
     "route_reason": {"type": "string"},
     "brief": {"type": "string", "minLength": 1},

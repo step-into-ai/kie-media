@@ -38,6 +38,20 @@ def _positive_int(value: str) -> int:
     return parsed
 
 
+def _keyframe(value: str) -> dict[str, Any]:
+    """Parse a timestamped middle frame without touching the file or network."""
+    if "=" not in value:
+        raise argparse.ArgumentTypeError("keyframe must use TIMESTAMP_S=URL_OR_FILE")
+    raw_timestamp, url = value.split("=", 1)
+    try:
+        timestamp = int(raw_timestamp)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("keyframe timestamp must be a whole number of seconds") from exc
+    if not url.strip():
+        raise argparse.ArgumentTypeError("keyframe requires a timestamp and a URL or local file")
+    return {"url": url, "timestamp_s": timestamp}
+
+
 def _load_env_key(env_file: str | None = None) -> str | None:
     if os.environ.get("KIE_API_KEY"): return os.environ["KIE_API_KEY"]
     candidates = []
@@ -60,6 +74,8 @@ def _add_output_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--image", action="append", default=[], help="Image URL or local file (auto-uploaded)")
     parser.add_argument("--start-image", help="First frame URL or local file")
     parser.add_argument("--end-image", help="Last frame URL or local file")
+    parser.add_argument("--keyframe", action="append", default=[], type=_keyframe, metavar="TIMESTAMP_S=URL_OR_FILE", help="Pinned middle frame; repeat for multiple frames")
+    parser.add_argument("--loop-image", help="Image URL or local file to use as both ends of a supported loop")
     parser.add_argument("--reference-image", action="append", default=[], help="Reference image URL or local file")
     parser.add_argument("--reference-video", action="append", default=[], help="Reference video URL or local file")
     parser.add_argument("--reference-audio", action="append", default=[], help="Reference audio URL or local file")
@@ -77,7 +93,7 @@ def _add_agent_flags(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("brief")
     parser.add_argument(
         "--workflow", default="auto",
-        choices=["auto", "image", "video", "image-to-video", "product-photoshoot", "marketplace-cards", "video-explainer", "campaign"],
+        choices=["auto", "image", "video", "image-to-video", "product-photoshoot", "marketplace-cards", "video-explainer", "campaign", "recast"],
     )
     parser.add_argument("--media", action="append", default=[], help="Reference/product image path; repeat for multiple images")
     parser.add_argument("--reference-video", action="append", default=[], help="Seedance reference video; repeat as needed")
@@ -165,6 +181,8 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--json", action="store_true")
     from .project_cli import add_parser
     add_parser(sub)
+    from .recast_cli import add_parser as add_recast_parser
+    add_recast_parser(sub)
     return parser
 
 
@@ -274,8 +292,8 @@ def _resolve_list(client: KieClient, values: list[str], expected_kind: str) -> l
 
 def _resolve_media_params(client: KieClient, values: dict[str, Any]) -> None:
     scalar_fields = {
-        "image_url": "image", "first_frame_url": "image", "last_frame_url": "image",
-        "video_url": "video", "audio_url": "audio",
+        "image_url": "image", "first_frame_url": "image", "last_frame_url": "image", "loop_url": "image",
+        "video_url": "video", "audio_url": "audio", "voice_url": "audio",
     }
     list_fields = {
         "image_urls": "image", "reference_image_urls": "image",
@@ -294,6 +312,14 @@ def _resolve_media_params(client: KieClient, values: dict[str, Any]) -> None:
         if not isinstance(items, list) or not all(isinstance(item, str) for item in items):
             raise ModelValidationError(f"{key} must be a list of media URL/path strings")
         values[key] = _resolve_list(client, items, kind)
+    if "keyframes" in values:
+        keyframes = values["keyframes"]
+        if not isinstance(keyframes, list):
+            raise ModelValidationError("keyframes must be a list")
+        for keyframe in keyframes:
+            if not isinstance(keyframe, dict) or not isinstance(keyframe.get("url"), str):
+                raise ModelValidationError("each keyframe must provide a URL or local image file")
+            keyframe["url"] = client.resolve_media(keyframe["url"], "image")
     for key, value in values.items():
         if isinstance(value, dict):
             _resolve_media_params(client, value)
@@ -307,7 +333,9 @@ def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args:
     del client  # Upload/URL resolution deliberately happens only after validation.
     model = spec or get_model(model_id)
     fields = set(model.fields)
-    requested = bool(args.image or args.start_image or args.end_image or args.reference_image or args.reference_video or args.reference_audio)
+    keyframes = list(getattr(args, "keyframe", []))
+    loop_image = getattr(args, "loop_image", None)
+    requested = bool(args.image or args.start_image or args.end_image or keyframes or loop_image or args.reference_image or args.reference_video or args.reference_audio)
     if not requested:
         return
     if model_id.startswith("bytedance/seedance-2"):
@@ -345,6 +373,14 @@ def _apply_media(client: KieClient, model_id: str, values: dict[str, Any], args:
     image_targets = ("first_frame_url", "image_urls", "image_url") if model.kind == "video" else ("image_urls", "image_url", "first_frame_url")
     put(images, image_targets, "image")
     put([args.end_image] if args.end_image else [], ("last_frame_url",), "end-image")
+    put([loop_image] if loop_image else [], ("loop_url",), "loop-image")
+    if keyframes:
+        if "keyframes" not in fields and model.kind != "custom":
+            raise ModelValidationError(f"{model.id} does not accept keyframe input flags")
+        existing = values.get("keyframes", [])
+        if not isinstance(existing, list):
+            raise ModelValidationError("Cannot combine media flags for keyframes")
+        values["keyframes"] = [*existing, *keyframes]
     put(list(args.reference_image), ("reference_image_urls", "image_urls", "image_url", "first_frame_url"), "reference-image")
     put(list(args.reference_video), ("reference_video_urls", "video_urls", "video_url"), "reference-video")
     put(list(args.reference_audio), ("reference_audio_urls", "audio_urls", "audio_url"), "reference-audio")
@@ -359,9 +395,10 @@ def _generate(client: KieClient, history: HistoryStore, args: argparse.Namespace
     values = parse_key_values(args.param)
     media_param_fields = {
         "image_url", "image_urls", "first_frame_url", "last_frame_url", "reference_image_urls",
+        "loop_url", "keyframes",
         "video_url", "video_urls", "reference_video_urls", "audio_url", "audio_urls", "reference_audio_urls",
     }
-    has_media_flags = bool(args.image or args.start_image or args.end_image or args.reference_image or args.reference_video or args.reference_audio)
+    has_media_flags = bool(args.image or args.start_image or args.end_image or getattr(args, "keyframe", []) or getattr(args, "loop_image", None) or args.reference_image or args.reference_video or args.reference_audio)
     if has_media_flags and set(values).intersection(media_param_fields):
         raise ModelValidationError("Do not mix media --param fields with dedicated media flags")
     shortcut_values = shortcut_values or {}
@@ -452,6 +489,11 @@ def main(argv: list[str] | None = None) -> int:
             result = dispatch(args)
             _print(result, args.json)
             return 1 if result.get("state") in {"needs_recovery", "needs_changes", "asset_changed"} else 0
+        if args.command == "recast":
+            from .recast_cli import dispatch
+            result = dispatch(args)
+            _print(result, args.json)
+            return 1 if result.get("state") in {"failed", "needs_recovery", "asset_changed", "rejected"} else 0
         if args.command == "doctor":
             from .inspection import doctor
             _print(doctor(), args.json)

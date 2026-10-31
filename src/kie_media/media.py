@@ -8,6 +8,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from fractions import Fraction
 from pathlib import Path
 
 
@@ -38,8 +39,15 @@ def probe(path: Path) -> dict:
     image_formats = {"image2", "image2pipe", "png_pipe", "jpeg_pipe", "webp_pipe", "bmp_pipe", "tiff_pipe", "gif"}
     is_image = bool(video) and payload.get("format", {}).get("format_name") in image_formats
     duration = float(payload.get("format", {}).get("duration") or video.get("duration") or 0)
+    try:
+        fps = float(Fraction(video.get("avg_frame_rate") or video.get("r_frame_rate") or "0"))
+    except (ValueError, ZeroDivisionError):
+        fps = 0
+    pixel_format = video.get("pix_fmt", "")
+    has_alpha = pixel_format in {"rgba", "bgra", "argb", "abgr", "ya8", "ya16be", "ya16le"} or pixel_format.startswith(("yuva", "gbrap"))
     return {"file": str(path), "duration": duration, "width": video.get("width"), "height": video.get("height"),
             "image": is_image, "video": bool(video) and not is_image, "audio": any(s.get("codec_type") == "audio" for s in streams),
+            "fps": fps, "pixel_format": pixel_format, "has_alpha": has_alpha,
             "bytes": path.stat().st_size, "technical_check": "passed", "visual_review": "not_performed"}
 
 

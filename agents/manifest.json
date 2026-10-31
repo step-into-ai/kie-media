@@ -7,7 +7,8 @@
     "run": "kie-media agent run",
     "project": "kie-media project",
     "chat": "kie-media chat",
-    "catalog": "kie-media catalog audit"
+    "catalog": "kie-media catalog audit",
+    "recast": "kie-media recast"
   },
   "roles": [
     {
@@ -90,6 +91,8 @@
     "audio-generation",
     "language-request",
     "local-montage",
-    "project-handoff"
+    "project-handoff",
+    "source-video-recast",
+    "pinned-frame-animation"
   ]
 }

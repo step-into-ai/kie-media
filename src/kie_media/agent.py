@@ -101,7 +101,7 @@ MARKETPLACE_APLUS = [
 
 SUPPORTED_WORKFLOWS = {
     "auto", "image", "video", "image-to-video", "product-photoshoot",
-    "marketplace-cards", "video-explainer", "campaign",
+    "marketplace-cards", "video-explainer", "campaign", "recast",
 }
 
 
@@ -119,6 +119,13 @@ def _has_word(text: str, terms: tuple[str, ...]) -> bool:
 
 def _route(brief: str) -> tuple[str, str]:
     text = brief.casefold()
+    source_clip = _has_word(text, ("video", "clip", "footage", "aufnahme"))
+    recast_intent = _has(text, ("motion transfer", "transfer motion", "motion-transfer", "object swap", "object-swap", "recast", "bewegung übertragen", "bewegung uebertragen"))
+    targeted_edit = _has_word(text, ("restyle", "replace", "swap", "tausche", "ersetze", "umgestalten"))
+    if _has(text, ("genjutsu",)) or recast_intent or (source_clip and targeted_edit):
+        return "recast", "source-video transformation: use kie-media recast plan, then recast run"
+    if _has(text, ("creative directions", "three directors", "drei regisseure", "stilrichtungen")):
+        return "video-explainer", "creative alternatives: use kie-media project directions, compare and compose"
     if _has(text, ("storyboard", "multi-scene", "three-scene", "3-scene", "drei szenen", "mehrere szenen", "montage", "final edit", "final cut")):
         return "video-explainer", "scene project: use kie-media project init, then project plan/run"
     if _has(text, ("marketplace", "amazon", "listing", "a+", "produktkarte", "product card")):
@@ -467,7 +474,7 @@ def build_plan(
     reference_videos = list(reference_videos or [])
     reference_audio = list(reference_audio or [])
     selected, reason = _route(brief) if workflow == "auto" else (workflow, "explicit workflow")
-    if selected != "video" and (reference_videos or reference_audio):
+    if selected not in {"video", "recast"} and (reference_videos or reference_audio):
         raise PlanError("Video/audio reference inputs are only supported by the video workflow")
     if duration is not None:
         if isinstance(duration, bool) or not math.isfinite(duration) or duration <= 0:
@@ -643,6 +650,14 @@ def build_plan(
             assumptions.append("animation waits for a visual review selection to avoid wasting credits")
         else:
             assumptions.append("visual review selects the strongest campaign candidate for delivery")
+
+    elif selected == "recast":
+        chosen_aspect = aspect_ratio or "16:9"
+        required = ["local_source_video"]
+        gaps = ["use_recast_workflow"]
+        assumptions.append("Use kie-media recast plan with the source clip and mode-specific references; inspect that saved plan before recast run.")
+        stages = [AgentStage("recast-plan", "creative-director", "hybrid",
+            "Validate source video, references and the documented transformation model with kie-media recast plan", blocking=True)]
 
     elif selected == "video-explainer":
         chosen_aspect = aspect_ratio or "16:9"
